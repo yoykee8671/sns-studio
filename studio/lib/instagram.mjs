@@ -1,8 +1,12 @@
-// Instagram Graph API publishing: single image, carousel (images/videos mixed) or reel.
+// Instagram API publishing: single image, carousel (images/videos mixed) or reel.
 // The API pulls media from public URLs, so slides are uploaded to Vercel Blob first.
+// Default host is the "Instagram API with Instagram Login" flavor (no Facebook Page
+// needed); set IG_GRAPH_HOST=graph.facebook.com for the Facebook-Login flavor.
 import { put } from '@vercel/blob';
 
-const GRAPH = `https://graph.facebook.com/${process.env.META_GRAPH_VERSION ?? 'v24.0'}`;
+const GRAPH = `https://${process.env.IG_GRAPH_HOST ?? 'graph.instagram.com'}/${
+  process.env.META_GRAPH_VERSION ?? 'v26.0'
+}`;
 
 export function publishConfig() {
   const required = {
