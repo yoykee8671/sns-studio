@@ -1,22 +1,22 @@
-# Render Blueprint — creates the studio web service with a persistent disk for drafts.
+# Render Blueprint — free web service; post content lives in Supabase Storage.
 # In the Render dashboard: New + → Blueprint → select this repo.
 services:
   - type: web
     name: sns-studio
     runtime: docker
-    plan: starter # 내보내기에서 메모리 부족이 나면 standard(2GB)로 올리세요
+    plan: free # 무료: 15분 미사용 시 잠들고, 다음 접속에서 30초~1분 걸려 깨어남
     region: singapore
     dockerfilePath: ./Dockerfile
     healthCheckPath: /login
-    disk:
-      name: studio-content
-      mountPath: /data
-      sizeGB: 5
     envVars:
-      - key: STUDIO_CONTENT_ROOT
-        value: /data/content
       - key: STUDIO_PASSWORD
         sync: false # 대시보드에서 직접 입력 (앱 접속 비밀번호)
+      - key: SUPABASE_URL
+        sync: false # Supabase 프로젝트 URL (https://xxxx.supabase.co)
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false # Supabase service_role 키 (Settings → API)
+      - key: SUPABASE_BUCKET
+        value: sns-studio
       - key: IG_USER_ID
         sync: false # Instagram 발행용 (없어도 앱은 동작)
       - key: IG_ACCESS_TOKEN

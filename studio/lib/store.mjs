@@ -1,8 +1,13 @@
-// File-based storage: brands/<brand>.json and content/<brand>/<post>/post.json.
+// Post storage: file-based (content/<brand>/<post>/post.json) by default, or Supabase
+// Storage for everything under content/ when SUPABASE_URL is configured (see blob-store.mjs).
+// Brand assets (logos, closing images) always come from the repo's brand folders.
 import { createHash } from 'node:crypto';
 import { readFile, writeFile, mkdir, readdir, copyFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { STICKER_TYPES, normalizeSticker } from './stickers.mjs';
+import * as blob from './blob-store.mjs';
+
+export const { supabaseEnabled } = blob;
 
 export const ROOT = process.env.STUDIO_ROOT ?? process.cwd();
 // Posts/media live here. On a server deployment this points at the persistent disk
@@ -36,6 +41,21 @@ export function postDir(brandId, postId) {
   return path.join(CONTENT_ROOT, brandId, postId);
 }
 
+/** Bucket key prefix of a post (Supabase mode). */
+function postKey(brandId, postId) {
+  assertId(brandId);
+  assertId(postId);
+  return `${brandId}/${postId}`;
+}
+
+// Uploaded media live under media/<file>; anything else is rejected before touching the bucket.
+const SAFE_MEDIA = /^media\/[^/\\]+$/;
+
+export function mediaKey(brandId, postId, rel) {
+  if (!SAFE_MEDIA.test(rel)) throw new Error(`invalid media path: ${rel}`);
+  return `${postKey(brandId, postId)}/${rel}`;
+}
+
 const VIDEO_EXT = new Set(['.mp4', '.mov', '.m4v', '.webm']);
 const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 
@@ -60,15 +80,37 @@ export function mediaFile(brand, post, slide) {
   return null;
 }
 
+/**
+ * Local file path of a slide's photo/video for rendering. In Supabase mode uploaded
+ * media are fetched into `tmpDir` first (ffmpeg and poster frames need real files).
+ */
+export async function materializeMedia(brand, post, slide, tmpDir) {
+  if (slide.media && supabaseEnabled) {
+    const data = await blob.getBytes(mediaKey(post.brand, post.id, slide.media));
+    if (!data) return null;
+    const file = path.join(tmpDir, path.basename(slide.media));
+    await writeFile(file, data);
+    return file;
+  }
+  return mediaFile(brand, post, slide);
+}
+
 /** Saves an uploaded original into content/<brand>/<post>/media/ and returns its slide fields. */
 export async function saveUpload(brandId, postId, filename, data) {
   const ext = path.extname(filename).toLowerCase();
   if (!VIDEO_EXT.has(ext) && !IMAGE_EXT.has(ext)) throw new Error(`지원하지 않는 파일 형식이에요: ${ext}`);
-  const dir = path.join(postDir(brandId, postId), 'media');
-  await mkdir(dir, { recursive: true });
   const base = path.basename(filename, ext).normalize('NFC').replace(/[^\p{L}\p{N}_-]+/gu, '-').slice(0, 40);
   const name = `${Date.now()}-${base || 'file'}${ext}`;
-  await writeFile(path.join(dir, name), data);
+  if (supabaseEnabled) {
+    const mime = VIDEO_EXT.has(ext)
+      ? ({ '.mov': 'video/quicktime', '.webm': 'video/webm' }[ext] ?? 'video/mp4')
+      : `image/${ext === '.jpg' ? 'jpeg' : ext.slice(1)}`;
+    await blob.putObject(mediaKey(brandId, postId, `media/${name}`), data, mime);
+  } else {
+    const dir = path.join(postDir(brandId, postId), 'media');
+    await mkdir(dir, { recursive: true });
+    await writeFile(path.join(dir, name), data);
+  }
   return {
     media: `media/${name}`,
     mediaType: VIDEO_EXT.has(ext) ? 'video' : 'image',
@@ -91,8 +133,12 @@ export async function createPost({ brand: brandId, slug, template, format, conte
   assertId(brandId);
   const date = new Date().toISOString().slice(0, 7);
   const clean = (slug ?? '').toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '') || 'post';
+  const exists = (pid) =>
+    supabaseEnabled
+      ? blob.objectExists(`${postKey(brandId, pid)}/post.json`)
+      : stat(postDir(brandId, pid)).then(() => true, () => false);
   let id = `${date}-${clean}`;
-  for (let n = 2; await stat(postDir(brandId, id)).then(() => true, () => false); n++) id = `${date}-${clean}-${n}`;
+  for (let n = 2; await exists(id); n++) id = `${date}-${clean}-${n}`;
   const post = {
     id,
     brand: brandId,
@@ -105,7 +151,7 @@ export async function createPost({ brand: brandId, slug, template, format, conte
     caption: '',
     hashtags: [],
   };
-  await mkdir(postDir(brandId, id), { recursive: true });
+  if (!supabaseEnabled) await mkdir(postDir(brandId, id), { recursive: true });
   return savePost(brandId, id, post);
 }
 
@@ -149,33 +195,49 @@ export async function closingImage(brand) {
 }
 
 export async function readPost(brandId, postId) {
+  if (supabaseEnabled) {
+    const data = await blob.getBytes(`${postKey(brandId, postId)}/post.json`);
+    if (!data) throw new Error(`post not found: ${brandId}/${postId}`);
+    return normalize(JSON.parse(data.toString('utf8')));
+  }
   const file = path.join(postDir(brandId, postId), 'post.json');
   return normalize(JSON.parse(await readFile(file, 'utf8')));
 }
 
 /** Writes post.json, keeping the previous version in .history/ so nothing is lost. */
 export async function savePost(brandId, postId, post) {
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const next = { ...post, updatedAt: new Date().toISOString() };
+  if (supabaseEnabled) {
+    const key = `${postKey(brandId, postId)}/post.json`;
+    await blob.copyObject(key, `${postKey(brandId, postId)}/.history/${stamp}.json`);
+    await blob.putObject(key, `${JSON.stringify(next, null, 2)}\n`, 'application/json');
+    return next;
+  }
   const dir = postDir(brandId, postId);
   const file = path.join(dir, 'post.json');
   const history = path.join(dir, '.history');
   await mkdir(history, { recursive: true });
   try {
     await stat(file);
-    await copyFile(file, path.join(history, `${new Date().toISOString().replace(/[:.]/g, '-')}.json`));
+    await copyFile(file, path.join(history, `${stamp}.json`));
   } catch {
     // first save
   }
-  const next = { ...post, updatedAt: new Date().toISOString() };
   await writeFile(file, `${JSON.stringify(next, null, 2)}\n`);
   return next;
 }
 
+const listDirNames = async (prefix) =>
+  supabaseEnabled
+    ? (await blob.listDir(prefix)).filter((e) => e.folder).map((e) => e.name)
+    : readdir(prefix ? path.join(CONTENT_ROOT, prefix) : CONTENT_ROOT).catch(() => []);
+
 export async function listPosts() {
   const out = [];
-  const base = CONTENT_ROOT;
-  for (const brandId of await readdir(base).catch(() => [])) {
+  for (const brandId of await listDirNames('')) {
     if (!SAFE_ID.test(brandId)) continue;
-    for (const postId of await readdir(path.join(base, brandId)).catch(() => [])) {
+    for (const postId of await listDirNames(brandId)) {
       if (!SAFE_ID.test(postId)) continue;
       try {
         const post = await readPost(brandId, postId);
@@ -202,6 +264,15 @@ export async function imageStatus(brand, post) {
   return Promise.all(
     post.slides.map(async (slide) => {
       try {
+        if (slide.media && supabaseEnabled) {
+          // Bucket uploads get unique names and are pinned at upload time, so a cheap
+          // existence probe replaces re-hashing (videos would be costly to re-download).
+          const key = mediaKey(post.brand, post.id, slide.media);
+          if (!(await blob.objectExists(key))) return { state: 'missing' };
+          if (slide.imageSha256) return { state: 'ok', sha: slide.imageSha256 };
+          const buf = await blob.getBytes(key);
+          return { state: 'unpinned', sha: createHash('sha256').update(buf).digest('hex') };
+        }
         const file = mediaFile(brand, post, slide);
         if (!file) return { state: 'missing' };
         const buf = await readFile(file);

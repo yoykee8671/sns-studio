@@ -8,7 +8,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import ffmpegPath from 'ffmpeg-static';
 import { chromium } from 'playwright-core';
-import { loadBrand, loadLogoSvg, imageStatus, mediaFile, mediaTypeOf, closingImage, resolveAsset } from './store.mjs';
+import { loadBrand, loadLogoSvg, imageStatus, materializeMedia, mediaTypeOf, closingImage, resolveAsset } from './store.mjs';
 import { exportSlideSvg } from './svg-export.mjs';
 import { getTemplate } from './templates/index.mjs';
 
@@ -94,7 +94,7 @@ export async function renderPost(post, { format, quality = 92, allowChanged = fa
     for (const [i, slide] of post.slides.entries()) {
       if (only && !only.includes(i)) continue;
       const name = String(i + 1).padStart(2, '0');
-      const file = mediaFile(brand, post, slide);
+      const file = await materializeMedia(brand, post, slide, tmp);
       const isVideo = mediaTypeOf(slide) === 'video';
       const base = { brand, post, slide, index: i, logoSvg };
 

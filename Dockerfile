@@ -20,8 +20,7 @@ COPY @pickydoggyclub ./@pickydoggyclub
 RUN cd studio && npm run build
 
 ENV NODE_ENV=production \
-    CHROME_PATH=/usr/bin/chromium \
-    STUDIO_CONTENT_ROOT=/data/content
+    CHROME_PATH=/usr/bin/chromium
 
 WORKDIR /app/studio
 EXPOSE 3000

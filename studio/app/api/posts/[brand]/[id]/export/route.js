@@ -1,7 +1,7 @@
 import { writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import JSZip from 'jszip';
-import { postDir } from '@/lib/store.mjs';
+import { postDir, supabaseEnabled } from '@/lib/store.mjs';
 import { renderPost, captionText, permissionError, ImageChangedError } from '@/lib/render-server.mjs';
 
 const FORMATS = new Set(['png', 'jpg', 'svg']);
@@ -33,17 +33,18 @@ export async function POST(req, { params }) {
     }
 
     const { files } = await renderPost(post, { format });
-    const out = path.join(postDir(brandId, id), 'out');
-    await mkdir(out, { recursive: true });
+    // Local convenience copy under content/<brand>/<post>/out/; skipped in bucket mode.
+    const out = supabaseEnabled ? null : path.join(postDir(brandId, id), 'out');
+    if (out) await mkdir(out, { recursive: true });
 
     const zip = new JSZip();
     for (const f of files) {
       zip.file(f.name, f.data);
-      await writeFile(path.join(out, f.name), f.data);
+      if (out) await writeFile(path.join(out, f.name), f.data);
     }
     const caption = captionText(post);
     zip.file('caption.txt', caption);
-    await writeFile(path.join(out, 'caption.txt'), caption);
+    if (out) await writeFile(path.join(out, 'caption.txt'), caption);
 
     const body = await zip.generateAsync({ type: 'uint8array' });
     const name = `${brandId}_${id}_${format === 'svg' ? 'figma' : format}.zip`;
