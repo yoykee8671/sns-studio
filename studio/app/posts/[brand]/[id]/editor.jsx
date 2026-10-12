@@ -55,6 +55,17 @@ function useDebounced(value, ms) {
   return v;
 }
 
+// A crashed/restarting server answers with a gateway error page, not JSON.
+async function errorOf(res) {
+  try {
+    return (await res.json()).error;
+  } catch {
+    return res.status >= 502
+      ? '서버가 작업 중에 재시작됐어요 (메모리 부족일 수 있음). 잠시 후 다시 시도하거나, 영상·장수가 많은 내보내기는 PC에서 해주세요.'
+      : `서버 오류 (${res.status})`;
+  }
+}
+
 async function downloadBlob(res, fallbackName) {
   const blob = await res.blob();
   const name = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') ?? '')?.[1] ?? fallbackName;
@@ -258,7 +269,7 @@ export default function Editor({ brandId, postId }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ post, format: fmt }),
       });
-      if (!res.ok) throw new Error((await res.json()).error);
+      if (!res.ok) throw new Error(await errorOf(res));
       await downloadBlob(res, 'export.zip');
       if (fmt === 'svg') setModal({ kind: 'figma' });
       else notify(`${post.slides.length}장${closingUrl ? ' + 끝장' : ''}과 캡션을 내려받았어요.`);
@@ -277,7 +288,7 @@ export default function Editor({ brandId, postId }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ post, format, only: i }),
       });
-      if (!res.ok) throw new Error((await res.json()).error);
+      if (!res.ok) throw new Error(await errorOf(res));
       await downloadBlob(res, `${postId}_${i + 1}.${format}`);
       notify(`${i + 1}장만 내려받았어요.`);
     } catch (e) {
