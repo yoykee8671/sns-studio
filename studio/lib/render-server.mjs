@@ -79,11 +79,25 @@ export async function renderPost(post, { format, quality = 92, allowChanged = fa
 
   const tmp = await mkdtemp(path.join(tmpdir(), 'sns-studio-'));
   // Locally the installed Chrome is used; in Docker CHROME_PATH points at system chromium.
+  // Low-memory flags keep Chromium inside a small container's budget (free/starter
+  // instances): one process, no GPU, capped JS heap. CHROME_LOW_MEM=0 turns them off
+  // without a rebuild in case a chromium build misbehaves under --single-process.
+  const lowMem =
+    process.env.CHROME_LOW_MEM !== '0'
+      ? [
+          '--single-process',
+          '--no-zygote',
+          '--disable-gpu',
+          '--disable-extensions',
+          '--renderer-process-limit=1',
+          '--js-flags=--max-old-space-size=128',
+        ]
+      : [];
   const browser = await chromium.launch(
     process.env.CHROME_PATH
       ? {
           executablePath: process.env.CHROME_PATH,
-          args: ['--no-sandbox', '--disable-dev-shm-usage', '--font-render-hinting=none'],
+          args: ['--no-sandbox', '--disable-dev-shm-usage', '--font-render-hinting=none', ...lowMem],
         }
       : { channel: 'chrome' },
   );

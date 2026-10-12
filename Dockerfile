@@ -20,7 +20,8 @@ COPY @pickydoggyclub ./@pickydoggyclub
 RUN cd studio && npm run build
 
 ENV NODE_ENV=production \
-    CHROME_PATH=/usr/bin/chromium
+    CHROME_PATH=/usr/bin/chromium \
+    NODE_OPTIONS=--max-old-space-size=192
 
 WORKDIR /app/studio
 EXPOSE 3000
