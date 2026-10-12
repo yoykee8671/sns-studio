@@ -2,7 +2,8 @@ import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import path from 'node:path';
 import { Readable } from 'node:stream';
-import { postDir } from '@/lib/store.mjs';
+import { postDir, mediaKey, supabaseEnabled } from '@/lib/store.mjs';
+import { getObject } from '@/lib/blob-store.mjs';
 
 const TYPES = {
   '.jpg': 'image/jpeg',
@@ -19,6 +20,22 @@ const TYPES = {
 export async function GET(req, { params }) {
   const { brand: brandId, id, path: parts } = await params;
   try {
+    if (supabaseEnabled) {
+      // Bucket mode: proxy the object, forwarding Range so video seeking keeps working.
+      const rel = `media/${parts.map(decodeURIComponent).join('/')}`;
+      const range = req.headers.get('range');
+      const upstream = await getObject(mediaKey(brandId, id, rel), range ? { range } : {});
+      if (!upstream.ok && upstream.status !== 206) return new Response('not found', { status: 404 });
+      const pass = {};
+      for (const h of ['content-type', 'content-length', 'content-range', 'accept-ranges']) {
+        const v = upstream.headers.get(h);
+        if (v) pass[h] = v;
+      }
+      return new Response(upstream.body, {
+        status: upstream.status,
+        headers: { 'Accept-Ranges': 'bytes', 'Cache-Control': 'no-store', ...pass },
+      });
+    }
     const base = path.join(postDir(brandId, id), 'media');
     const file = path.resolve(base, parts.map(decodeURIComponent).join('/'));
     if (!file.startsWith(base + path.sep)) return new Response('not found', { status: 404 });
