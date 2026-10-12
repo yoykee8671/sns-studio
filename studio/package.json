@@ -1,0 +1,22 @@
+{
+  "name": "sns-studio",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev -p 3100",
+    "build": "next build",
+    "start": "next start -p 3100",
+    "render": "node scripts/render.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.63.0"
+  },
+  "dependencies": {
+    "@vercel/blob": "^2.8.0",
+    "ffmpeg-static": "^5.3.0",
+    "jszip": "^3.10.2",
+    "next": "^16.3.8",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  }
+}

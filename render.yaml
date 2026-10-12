@@ -1,0 +1,25 @@
+# Render Blueprint — creates the studio web service with a persistent disk for drafts.
+# In the Render dashboard: New + → Blueprint → select this repo.
+services:
+  - type: web
+    name: sns-studio
+    runtime: docker
+    plan: starter # 내보내기에서 메모리 부족이 나면 standard(2GB)로 올리세요
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /login
+    disk:
+      name: studio-content
+      mountPath: /data
+      sizeGB: 5
+    envVars:
+      - key: STUDIO_CONTENT_ROOT
+        value: /data/content
+      - key: STUDIO_PASSWORD
+        sync: false # 대시보드에서 직접 입력 (앱 접속 비밀번호)
+      - key: IG_USER_ID
+        sync: false # Instagram 발행용 (없어도 앱은 동작)
+      - key: IG_ACCESS_TOKEN
+        sync: false
+      - key: BLOB_READ_WRITE_TOKEN
+        sync: false

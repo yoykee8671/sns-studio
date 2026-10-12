@@ -1,0 +1,9 @@
+node_modules/
+.next/
+.DS_Store
+.omc/
+.env
+.env.*
+studio/content/
+refrence/
+studio-pre-monorepo.bundle

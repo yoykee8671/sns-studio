@@ -1,0 +1,34 @@
+{
+  "id": "pickydoggyclub",
+  "handle": "@pickydoggyclub",
+  "assetDir": "../@pickydoggyclub",
+  "logo": {
+    "horizontal": "brand image/logo-svg/pdc-logo-horizontal.svg",
+    "stacked": "brand image/logo-svg/pdc-logo-stacked.svg"
+  },
+  "colors": {
+    "blue": "#3B63BC",
+    "lime": "#EBFA6A",
+    "lightBlue": "#D6DEF8",
+    "ink": "#111111",
+    "paper": "#FFFFFF"
+  },
+  "fonts": {
+    "headline": "Pretendard",
+    "body": "Pretendard",
+    "comment": "Freesentation",
+    "latin": "Poppins"
+  },
+  "voice": {
+    "speech": "존댓말",
+    "persona": "까다로운 강아지 관점의 클럽 계정",
+    "humor": "light"
+  },
+  "rules": {
+    "feedTextColor": "white/black only, chosen by background luminance",
+    "noSolidTextOnlyCards": true,
+    "bodyMaxLines": 2,
+    "headlineMaxLines": 2,
+    "postit": "optional design element, added per slide only when needed"
+  }
+}
