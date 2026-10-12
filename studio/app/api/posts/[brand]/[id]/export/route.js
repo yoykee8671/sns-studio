@@ -4,6 +4,8 @@ import JSZip from 'jszip';
 import { postDir, supabaseEnabled } from '@/lib/store.mjs';
 import { renderPost, captionText, permissionError, ImageChangedError } from '@/lib/render-server.mjs';
 
+export const maxDuration = 300;
+
 const FORMATS = new Set(['png', 'jpg', 'svg']);
 
 // Renders the editor's current (possibly unsaved) post and returns a zip.

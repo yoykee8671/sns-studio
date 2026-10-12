@@ -1,11 +1,16 @@
-# SNS Studio — Render(무료) + Supabase 배포 가이드
+# SNS Studio — 무료 배포 가이드 (Vercel 권장 / Render 대안)
 
 모바일을 포함해 어디서든 쓰기 위한 서버 배포 구성입니다. **월 추가 요금 $0** 구성:
 
-- **Render Web Service (Free, Docker, Singapore)** — 앱 서버. Chrome·ffmpeg·브랜드 폰트 포함.
-  - 무료 플랜 특성: 15분 동안 안 쓰면 잠들고, 다음 접속 때 30초~1분 걸려 깨어납니다.
+- **앱 서버** — 아래 둘 중 하나 (둘 다 무료, 같은 Supabase를 보므로 병행도 가능):
+  - **Vercel (권장)** — 함수 메모리 2GB라 사진 내보내기가 서버에서 돌아갑니다.
+    잠들지 않고, Next.js 제조사라 설정도 가장 단순. 단 요청당 최대 5분 제한이 있어
+    긴 영상 합성은 실패할 수 있어요(그 경우 PC에서).
+  - **Render Free (Docker, Singapore)** — 512MB뿐이라 내보내기가 메모리 부족으로
+    죽습니다(작성·저장은 문제없음). 15분 안 쓰면 잠들고 깨는 데 30초~1분.
 - **Supabase Storage** — 게시물(post.json)과 업로드한 사진·영상이 전부 여기(비공개 버킷
   `sns-studio`) 저장됩니다. 서버가 재시작·재배포돼도 유지. 무료 티어(1GB)로 충분.
+  서버를 옮겨도 콘텐츠는 그대로 따라옵니다.
 - **비밀번호 게이트** — `STUDIO_PASSWORD` 환경변수를 넣으면 전체 앱이 잠기고 `/login`에서
   입력해야 들어올 수 있어요. (로컬 개발은 환경변수가 없으므로 그대로 열려 있음)
 - 브랜드 에셋(로고, **끝장 이미지** `@pickydoggyclub/closing/`)은 저장소에 포함돼 이미지에
@@ -24,7 +29,23 @@
 Supabase 쪽 사전 작업은 **없음** — 기존 프로젝트의 URL/키만 넣으면 앱이 비공개 버킷을 알아서
 만듭니다. (따로 만들고 싶으면 Storage에서 private 버킷 `sns-studio` 생성)
 
-## 배포 순서
+## 배포 순서 — Vercel (권장)
+
+1. [vercel.com](https://vercel.com) → **Sign Up** → Continue with GitHub (yoykee8671 계정).
+   플랜은 **Hobby(무료)** 선택. (Hobby는 공식적으로 비상업 용도 플랜입니다)
+2. **Add New… → Project** → `yoykee8671/sns-studio` 저장소 **Import**.
+3. **Root Directory**를 `studio`로 변경 (Edit 버튼). Framework는 Next.js로 자동 인식.
+   "Include source files outside of the Root Directory" 옵션은 켜진 상태 유지
+   (브랜드 폴더·폰트가 studio/ 밖에 있어서 필요).
+4. **Environment Variables**에 위 표의 값 입력 — 최소 `STUDIO_PASSWORD`, `SUPABASE_URL`,
+   `SUPABASE_SERVICE_ROLE_KEY`, 그리고 `SUPABASE_BUCKET=sns-studio`.
+5. **Deploy** → 몇 분 뒤 `https://<프로젝트명>.vercel.app` 주소가 나옵니다.
+6. 폰에서 접속 → 로그인 → Safari 공유 → **홈 화면에 추가** 하면 앱처럼 사용.
+
+이후 `main`에 push될 때마다 자동 재배포됩니다. 서버 Chrome은 서버리스용
+`@sparticuz/chromium`을 쓰고, 브랜드 폰트는 함수에 번들돼 런타임에 등록됩니다.
+
+## 배포 순서 — Render (대안)
 
 1. **Render 대시보드** → `New +` → **Blueprint** → 이 저장소 선택 → `render.yaml` 자동 인식.
    (이미 blueprint가 있으면 Manual sync만 눌러도 됩니다)
@@ -32,7 +53,7 @@ Supabase 쪽 사전 작업은 **없음** — 기존 프로젝트의 URL/키만 �
 3. 첫 빌드(5~10분) 후 `https://sns-studio-xxxx.onrender.com` 주소가 나옵니다.
 4. 폰에서 접속 → 로그인 → Safari 공유 → **홈 화면에 추가** 하면 앱처럼 사용.
 
-## 무료 플랜 메모
+## 무료 플랜 메모 (Render)
 
 - 서버 파일시스템은 휘발성입니다. 콘텐츠는 전부 Supabase에 있으므로 잃는 것 없음.
 - 내려받기/발행(Chrome 렌더링)은 저메모리 모드로 돌지만 512MB라 빠듯합니다. 특히
