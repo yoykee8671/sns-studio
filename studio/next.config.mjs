@@ -3,9 +3,14 @@ import { fileURLToPath } from 'node:url';
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 
-// Chromium binary + brand fonts are only needed by the two rendering routes;
+// Chromium binary, playwright-core (its browsers.json is loaded via dynamic require
+// that tracing misses) and brand fonts are only needed by the rendering routes;
 // globs resolve from this folder (the Next.js project root).
-const renderFiles = ['../deploy/fonts/**', 'node_modules/@sparticuz/chromium/bin/**'];
+const renderFiles = [
+  '../deploy/fonts/**',
+  'node_modules/@sparticuz/chromium/bin/**',
+  'node_modules/playwright-core/**',
+];
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
