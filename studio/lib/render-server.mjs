@@ -2,13 +2,13 @@
 // Image slides → PNG/JPG/SVG screenshots. Video slides → MP4: the template is rendered as a
 // transparent overlay and composited over the original video with ffmpeg.
 import { execFile } from 'node:child_process';
-import { readFile, mkdtemp, rm } from 'node:fs/promises';
+import { readFile, mkdtemp, rm, cp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import ffmpegPath from 'ffmpeg-static';
 import { chromium } from 'playwright-core';
-import { loadBrand, loadLogoSvg, imageStatus, materializeMedia, mediaTypeOf, closingImage, resolveAsset } from './store.mjs';
+import { ROOT, loadBrand, loadLogoSvg, imageStatus, materializeMedia, mediaTypeOf, closingImage, resolveAsset } from './store.mjs';
 import { exportSlideSvg } from './svg-export.mjs';
 import { getTemplate } from './templates/index.mjs';
 
@@ -59,6 +59,45 @@ const closingHtml = (src, { width, height }) => `<!doctype html>
   img { width: 100%; height: 100%; object-fit: cover; display: block; }
 </style></head><body><img src="${src}"></body></html>`;
 
+// Three environments:
+// - Vercel: @sparticuz/chromium serverless build; brand fonts are copied into
+//   FONTCONFIG_PATH (/tmp/fonts) because that is the only folder fontconfig scans there.
+// - Docker/Render: CHROME_PATH points at system chromium. Low-memory flags keep it inside
+//   a small container's budget (one process, no GPU, capped JS heap); CHROME_LOW_MEM=0
+//   turns them off without a rebuild in case a chromium build misbehaves.
+// - Local dev: the installed Chrome.
+async function launchBrowser() {
+  if (process.env.VERCEL) {
+    const { default: serverless } = await import('@sparticuz/chromium');
+    const executablePath = await serverless.executablePath();
+    const fontDir = process.env.FONTCONFIG_PATH ?? path.join(tmpdir(), 'fonts');
+    await cp(path.resolve(ROOT, '../deploy/fonts'), fontDir, {
+      recursive: true,
+      force: false,
+    }).catch(() => {});
+    return chromium.launch({ executablePath, args: serverless.args });
+  }
+  const lowMem =
+    process.env.CHROME_LOW_MEM !== '0'
+      ? [
+          '--single-process',
+          '--no-zygote',
+          '--disable-gpu',
+          '--disable-extensions',
+          '--renderer-process-limit=1',
+          '--js-flags=--max-old-space-size=128',
+        ]
+      : [];
+  return chromium.launch(
+    process.env.CHROME_PATH
+      ? {
+          executablePath: process.env.CHROME_PATH,
+          args: ['--no-sandbox', '--disable-dev-shm-usage', '--font-render-hinting=none', ...lowMem],
+        }
+      : { channel: 'chrome' },
+  );
+}
+
 /**
  * @param {object} post
  * @param {{ format: 'png'|'jpg'|'svg', quality?: number, allowChanged?: boolean, only?: number[] }} opts
@@ -78,29 +117,7 @@ export async function renderPost(post, { format, quality = 92, allowChanged = fa
   }
 
   const tmp = await mkdtemp(path.join(tmpdir(), 'sns-studio-'));
-  // Locally the installed Chrome is used; in Docker CHROME_PATH points at system chromium.
-  // Low-memory flags keep Chromium inside a small container's budget (free/starter
-  // instances): one process, no GPU, capped JS heap. CHROME_LOW_MEM=0 turns them off
-  // without a rebuild in case a chromium build misbehaves under --single-process.
-  const lowMem =
-    process.env.CHROME_LOW_MEM !== '0'
-      ? [
-          '--single-process',
-          '--no-zygote',
-          '--disable-gpu',
-          '--disable-extensions',
-          '--renderer-process-limit=1',
-          '--js-flags=--max-old-space-size=128',
-        ]
-      : [];
-  const browser = await chromium.launch(
-    process.env.CHROME_PATH
-      ? {
-          executablePath: process.env.CHROME_PATH,
-          args: ['--no-sandbox', '--disable-dev-shm-usage', '--font-render-hinting=none', ...lowMem],
-        }
-      : { channel: 'chrome' },
-  );
+  const browser = await launchBrowser();
   try {
     const page = await browser.newPage({ viewport: size, deviceScaleFactor: 1 });
     const files = [];

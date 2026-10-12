@@ -2,6 +2,7 @@
 // Storage for everything under content/ when SUPABASE_URL is configured (see blob-store.mjs).
 // Brand assets (logos, closing images) always come from the repo's brand folders.
 import { createHash } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import { readFile, writeFile, mkdir, readdir, copyFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { STICKER_TYPES, normalizeSticker } from './stickers.mjs';
@@ -9,7 +10,17 @@ import * as blob from './blob-store.mjs';
 
 export const { supabaseEnabled } = blob;
 
-export const ROOT = process.env.STUDIO_ROOT ?? process.cwd();
+// cwd is the studio folder locally and in Docker, but on Vercel the traced monorepo
+// is mounted with the app under studio/ — probe for the brands folder to find ROOT.
+function defaultRoot() {
+  const cwd = process.cwd();
+  if (existsSync(path.join(cwd, 'brands'))) return cwd;
+  const nested = path.join(cwd, 'studio');
+  if (existsSync(path.join(nested, 'brands'))) return nested;
+  return cwd;
+}
+
+export const ROOT = process.env.STUDIO_ROOT ?? defaultRoot();
 // Posts/media live here. On a server deployment this points at the persistent disk
 // (e.g. /data/content) so drafts survive deploys; brands/assets stay in the app image.
 const CONTENT_ROOT = process.env.STUDIO_CONTENT_ROOT ?? path.join(ROOT, 'content');
