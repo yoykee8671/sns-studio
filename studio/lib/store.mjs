@@ -124,7 +124,12 @@ export async function materializeMedia(brand, post, slide, tmpDir) {
 function uploadTarget(filename) {
   const ext = path.extname(filename).toLowerCase();
   if (!VIDEO_EXT.has(ext) && !IMAGE_EXT.has(ext)) throw new Error(`지원하지 않는 파일 형식이에요: ${ext}`);
-  const base = path.basename(filename, ext).normalize('NFC').replace(/[^\p{L}\p{N}_-]+/gu, '-').slice(0, 40);
+  // ASCII-only: Supabase Storage rejects keys with other characters (400 Invalid key).
+  const base = path
+    .basename(filename, path.extname(filename))
+    .replace(/[^A-Za-z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
   const mime = VIDEO_EXT.has(ext)
     ? ({ '.mov': 'video/quicktime', '.webm': 'video/webm' }[ext] ?? 'video/mp4')
     : `image/${ext === '.jpg' ? 'jpeg' : ext.slice(1)}`;

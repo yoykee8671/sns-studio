@@ -392,7 +392,15 @@ export default function Editor({ brandId, postId }) {
           headers: { 'Content-Type': sign.mime },
           body: file,
         });
-        if (!put.ok) throw new Error(`스토리지 업로드 실패 (${put.status})`);
+        if (!put.ok) {
+          const text = await put.text().catch(() => '');
+          if (/payload too large|exceeded the maximum allowed size/i.test(text)) {
+            throw new Error('파일이 스토리지 용량 제한을 넘어요 (Supabase 무료 플랜 50MB). 영상을 압축해서 다시 올려주세요.');
+          }
+          let detail = '';
+          try { detail = JSON.parse(text).message ?? JSON.parse(text).error ?? ''; } catch { detail = text.slice(0, 120); }
+          throw new Error(`스토리지 업로드 실패 (${put.status})${detail ? `: ${detail}` : ''}`);
+        }
         const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
         const sha = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
         fields = { media: sign.media, mediaType: sign.mediaType, imageSha256: sha };
