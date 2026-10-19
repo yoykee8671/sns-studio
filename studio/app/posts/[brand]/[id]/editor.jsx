@@ -340,14 +340,36 @@ export default function Editor({ brandId, postId }) {
     if (!file) return;
     setBusy('upload');
     try {
-      const body = new FormData();
-      body.append('file', file);
-      const res = await fetch(`${apiBase}/media`, { method: 'POST', body });
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.error);
-      updateSlide(sel, { ...d, image: undefined });
-      setImages((im) => im.map((s, i) => (i === sel ? { state: 'ok', sha: d.imageSha256 } : s)));
-      notify(`${d.mediaType === 'video' ? '영상' : '사진'}을 올렸어요.`);
+      let fields;
+      // Signed direct upload straight to Supabase (big videos exceed the 4.5MB
+      // request cap of Vercel functions); local file mode answers url: null.
+      const signRes = await fetch(`${apiBase}/media/sign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: file.name }),
+      });
+      if (!signRes.ok) throw new Error(await errorOf(signRes));
+      const sign = await signRes.json();
+      if (sign.url) {
+        const put = await fetch(sign.url, {
+          method: 'PUT',
+          headers: { 'Content-Type': sign.mime },
+          body: file,
+        });
+        if (!put.ok) throw new Error(`스토리지 업로드 실패 (${put.status})`);
+        const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
+        const sha = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+        fields = { media: sign.media, mediaType: sign.mediaType, imageSha256: sha };
+      } else {
+        const body = new FormData();
+        body.append('file', file);
+        const res = await fetch(`${apiBase}/media`, { method: 'POST', body });
+        if (!res.ok) throw new Error(await errorOf(res));
+        fields = await res.json();
+      }
+      updateSlide(sel, { ...fields, image: undefined });
+      setImages((im) => im.map((s, i) => (i === sel ? { state: 'ok', sha: fields.imageSha256 } : s)));
+      notify(`${fields.mediaType === 'video' ? '영상' : '사진'}을 올렸어요. 저장을 눌러야 게시물에 남아요.`);
     } catch (e) {
       notify(`업로드 실패: ${e.message}`, 'error');
     } finally {

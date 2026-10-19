@@ -120,16 +120,25 @@ export async function materializeMedia(brand, post, slide, tmpDir) {
   return mediaFile(brand, post, slide);
 }
 
-/** Saves an uploaded original into content/<brand>/<post>/media/ and returns its slide fields. */
-export async function saveUpload(brandId, postId, filename, data) {
+/** Unique safe object name, media type and MIME for an uploaded original. */
+function uploadTarget(filename) {
   const ext = path.extname(filename).toLowerCase();
   if (!VIDEO_EXT.has(ext) && !IMAGE_EXT.has(ext)) throw new Error(`지원하지 않는 파일 형식이에요: ${ext}`);
   const base = path.basename(filename, ext).normalize('NFC').replace(/[^\p{L}\p{N}_-]+/gu, '-').slice(0, 40);
-  const name = `${Date.now()}-${base || 'file'}${ext}`;
+  const mime = VIDEO_EXT.has(ext)
+    ? ({ '.mov': 'video/quicktime', '.webm': 'video/webm' }[ext] ?? 'video/mp4')
+    : `image/${ext === '.jpg' ? 'jpeg' : ext.slice(1)}`;
+  return {
+    name: `${Date.now()}-${base || 'file'}${ext}`,
+    mediaType: VIDEO_EXT.has(ext) ? 'video' : 'image',
+    mime,
+  };
+}
+
+/** Saves an uploaded original into content/<brand>/<post>/media/ and returns its slide fields. */
+export async function saveUpload(brandId, postId, filename, data) {
+  const { name, mediaType, mime } = uploadTarget(filename);
   if (supabaseEnabled) {
-    const mime = VIDEO_EXT.has(ext)
-      ? ({ '.mov': 'video/quicktime', '.webm': 'video/webm' }[ext] ?? 'video/mp4')
-      : `image/${ext === '.jpg' ? 'jpeg' : ext.slice(1)}`;
     await blob.putObject(mediaKey(brandId, postId, `media/${name}`), data, mime);
   } else {
     const dir = path.join(postDir(brandId, postId), 'media');
@@ -138,9 +147,22 @@ export async function saveUpload(brandId, postId, filename, data) {
   }
   return {
     media: `media/${name}`,
-    mediaType: VIDEO_EXT.has(ext) ? 'video' : 'image',
+    mediaType,
     imageSha256: createHash('sha256').update(data).digest('hex'),
   };
+}
+
+/**
+ * Signed URL for uploading an original straight from the browser to Supabase
+ * (big phone videos would blow the 4.5MB request limit of a Vercel function).
+ * Returns null in local file mode, where the multipart route handles uploads.
+ */
+export async function signMediaUpload(brandId, postId, filename) {
+  if (!supabaseEnabled) return null;
+  const { name, mediaType, mime } = uploadTarget(filename);
+  const rel = `media/${name}`;
+  const url = await blob.signUpload(mediaKey(brandId, postId, rel));
+  return { url, media: rel, mediaType, mime };
 }
 
 export async function listBrands() {
