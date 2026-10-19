@@ -583,7 +583,7 @@ export default function Editor({ brandId, postId }) {
               ))}
 
               {meta.options
-                .filter((o) => !o.coverOnly || sel === 0)
+                .filter((o) => (!o.coverOnly || sel === 0) && !o.hidden?.(slide))
                 .map((o) => (
                   <div className="field" key={o.key}>
                     <label>{o.label}</label>
