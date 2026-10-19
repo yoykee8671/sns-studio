@@ -103,6 +103,8 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1
 }
 .stage-frame iframe { border: 0; transform-origin: 0 0; display: block; }
 .stage-hint { margin: 12px 0 0; color: var(--muted); font-size: 12px; }
+.stage-size { margin-top: 10px; display: flex; align-items: center; gap: 10px; }
+.stage-size .seg { background: var(--surface); }
 
 .panel {
   background: var(--surface); border-left: 1px solid var(--line);
