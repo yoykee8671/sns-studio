@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { getTemplate } from '@/lib/templates/index.mjs';
 import { RATIOS } from '@/lib/templates/sizes.mjs';
 import { STICKER_TYPES, createSticker, resolveColor } from '@/lib/stickers.mjs';
@@ -85,6 +86,7 @@ const loadPresets = () => {
 };
 
 export default function Editor({ brandId, postId }) {
+  const router = useRouter();
   const [ctx, setCtx] = useState(null); // { brand, logoSvg, publish, closing }
   const [post, setPost] = useState(null);
   const [images, setImages] = useState([]);
@@ -262,6 +264,20 @@ export default function Editor({ brandId, postId }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [save]);
 
+  const doDelete = async () => {
+    setBusy('delete');
+    try {
+      const res = await fetch(apiBase, { method: 'DELETE' });
+      if (!res.ok) throw new Error(await errorOf(res));
+      setDirty(false);
+      router.push('/');
+    } catch (e) {
+      notify(`삭제 실패: ${e.message}`, 'error');
+      setBusy(null);
+      setModal(null);
+    }
+  };
+
   const exportAs = async (fmt) => {
     setBusy(fmt);
     try {
@@ -393,6 +409,9 @@ export default function Editor({ brandId, postId }) {
           </div>
         </div>
         <div className="actions">
+          <button className="topbar-danger" onClick={() => setModal({ kind: 'delete' })} disabled={!!busy}>
+            삭제
+          </button>
           <button onClick={save} disabled={!!busy}>
             {busy === 'save' ? '저장 중…' : '임시 저장'}
           </button>
@@ -745,6 +764,21 @@ export default function Editor({ brandId, postId }) {
                 <div className="modal-actions">
                   <button onClick={() => setModal(null)}>취소</button>
                   <button className="primary" onClick={doPublish}>발행하기</button>
+                </div>
+              </>
+            )}
+            {modal.kind === 'delete' && (
+              <>
+                <h2>이 게시물을 삭제할까요?</h2>
+                <p>
+                  장 내용과 올린 사진·영상, 수정 기록이 모두 지워지고 되돌릴 수 없어요.
+                  {post.status === 'published' && ' 이미 발행된 Instagram 게시물은 그대로 남아요.'}
+                </p>
+                <div className="modal-actions">
+                  <button onClick={() => setModal(null)} disabled={busy === 'delete'}>취소</button>
+                  <button className="modal-danger" onClick={doDelete} disabled={busy === 'delete'}>
+                    {busy === 'delete' ? '삭제 중…' : '삭제하기'}
+                  </button>
                 </div>
               </>
             )}

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { listPosts, listBrands } from '@/lib/store.mjs';
 import NewPost from './new-post';
+import DeletePostButton from './delete-post-button';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,7 +20,7 @@ export default async function Home() {
       </header>
       <ul className="post-list">
         {posts.map((p) => (
-          <li key={`${p.brand}/${p.id}`}>
+          <li key={`${p.brand}/${p.id}`} className="post-item">
             <Link href={`/posts/${p.brand}/${p.id}`} className="post-card">
               <span className="post-brand">@{p.brand}</span>
               <strong className="post-title">{p.title}</strong>
@@ -28,6 +29,7 @@ export default async function Home() {
                 <span className={`badge badge-${p.status}`}>{STATUS[p.status] ?? p.status}</span>
               </span>
             </Link>
+            <DeletePostButton brand={p.brand} id={p.id} />
           </li>
         ))}
         {posts.length === 0 && <li className="empty">content/ 폴더에 게시물이 없어요.</li>}
