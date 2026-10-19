@@ -1,6 +1,7 @@
 // AI copy suggestions: sends the slide's photo (or a video's first frame) to
 // Claude with the brand voice and returns three headline/comment drafts.
 // Needs ANTHROPIC_API_KEY; SUGGEST_MODEL overrides the default (Haiku: cheap, fast).
+import { readFile } from 'node:fs/promises';
 import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
@@ -13,6 +14,22 @@ const Candidates = z.object({
 });
 
 export const suggestReady = () => Boolean(process.env.ANTHROPIC_API_KEY);
+
+// Headline style references collected from magazine-style IG accounts
+// (references/headlines.json). Sampled into the prompt as tone examples.
+export async function referenceTitles(max = 20) {
+  try {
+    const raw = await readFile(new URL('../references/headlines.json', import.meta.url), 'utf8');
+    const all = (JSON.parse(raw).accounts ?? []).flatMap((a) => a.titles ?? []);
+    for (let i = all.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [all[i], all[j]] = [all[j], all[i]];
+    }
+    return all.slice(0, max);
+  } catch {
+    return [];
+  }
+}
 
 /**
  * @param {object} o
@@ -29,6 +46,11 @@ export async function suggestCopy({ brand, post, slide, imageBase64, avoid = [] 
   const bodyLines = !isKnowledge && slide.layout === 'overlay' ? 4 : 2;
   const voice = brand.voice ?? {};
 
+  const refs = await referenceTitles();
+  const refSection = refs.length
+    ? `\n\n참고 스타일 — 잘 되는 매거진 계정들의 실제 썸네일 제목 예시입니다. 어휘·호흡·구어체 결만 참고하고, 문구를 그대로 가져오거나 소재를 베끼지는 마세요:\n${refs.map((t) => `- ${t}`).join('\n')}`
+    : '';
+
   const system = `당신은 Instagram 피드 콘텐츠 카피라이터입니다. 계정에 맞는 한국어 문구를 씁니다.
 
 계정: ${brand.handle}
@@ -41,7 +63,7 @@ export async function suggestCopy({ brand, post, slide, imageBase64, avoid = [] 
 - body: 최대 ${bodyLines}줄, 줄당 28자 내외. 줄 구분은 \\n으로.
 - 상투적인 광고 문구("지금 바로", "~해보세요", "놓치지 마세요")와 과장은 피합니다.
 - 이모지는 전체에서 0~1개만.
-- 세 후보는 서로 결(톤·구조·관점)이 달라야 합니다.`;
+- 세 후보는 서로 결(톤·구조·관점)이 달라야 합니다.${refSection}`;
 
   const content = [];
   if (imageBase64) {

@@ -19,7 +19,7 @@ const nextConfig = {
   // brand folders and fonts that live outside studio/ ship with the functions too.
   outputFileTracingRoot: path.join(dir, '..'),
   outputFileTracingIncludes: {
-    '/**': ['brands/**', '../@*/**'],
+    '/**': ['brands/**', 'references/**', '../@*/**'],
     '/api/posts/**': renderFiles,
   },
 };
