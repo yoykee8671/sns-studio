@@ -98,6 +98,7 @@ export default function Editor({ brandId, postId }) {
   const [modal, setModal] = useState(null);
   const [tab, setTab] = useState('slide');
   const [format, setFormat] = useState('png');
+  const [sugg, setSugg] = useState({}); // per-slide: { list: [{headline, body}], cursor }
   const [loadError, setLoadError] = useState(null);
 
   const mainFrame = useRef(null);
@@ -263,6 +264,41 @@ export default function Editor({ brandId, postId }) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [save]);
+
+  // Cycles through AI copy drafts: applies the next cached candidate, or asks
+  // the API for three fresh ones steering away from what's been shown.
+  const suggest = async () => {
+    const cur = sugg[sel];
+    if (cur && cur.cursor < cur.list.length) {
+      const c = cur.list[cur.cursor];
+      updateSlide(sel, { headline: c.headline, body: c.body });
+      setSugg((s) => ({ ...s, [sel]: { ...cur, cursor: cur.cursor + 1 } }));
+      notify(`추천 ${cur.cursor + 1}/${cur.list.length} — 다시 누르면 다음 문구가 나와요.`);
+      return;
+    }
+    setBusy('suggest');
+    try {
+      const slideNow = post.slides[sel];
+      const avoid = [
+        ...(cur?.list.flatMap((c) => [c.headline, c.body]) ?? []),
+        slideNow.headline,
+      ].filter(Boolean);
+      const res = await fetch(`${apiBase}/suggest`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ post, index: sel, avoid }),
+      });
+      if (!res.ok) throw new Error(await errorOf(res));
+      const { candidates } = await res.json();
+      updateSlide(sel, { headline: candidates[0].headline, body: candidates[0].body });
+      setSugg((s) => ({ ...s, [sel]: { list: candidates, cursor: 1 } }));
+      notify(`추천 1/${candidates.length} — 다시 누르면 다음 문구가 나와요.`);
+    } catch (e) {
+      notify(`문구 추천 실패: ${e.message}`, 'error');
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const doDelete = async () => {
     setBusy('delete');
@@ -590,6 +626,15 @@ export default function Editor({ brandId, postId }) {
                 onPin={() => updateSlide(sel, { imageSha256: images[sel].sha })}
                 onZoom={(z) => updateSlide(sel, { zoom: z === 1 ? undefined : z })}
               />
+
+              <div className="field suggest-row">
+                <button onClick={suggest} disabled={!!busy}>
+                  {busy === 'suggest' ? '문구 만드는 중…' : '✨ 문구 추천'}
+                </button>
+                <p className="note">
+                  사진·영상에 어울리는 헤드라인·코멘트 초안을 만들어요. 다시 누르면 다른 문구가 나와요.
+                </p>
+              </div>
 
               {meta.fields.map((f) => (
                 <LinesField
