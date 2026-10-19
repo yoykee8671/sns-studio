@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { getTemplate } from '@/lib/templates/index.mjs';
+import { RATIOS } from '@/lib/templates/sizes.mjs';
 import { STICKER_TYPES, createSticker, resolveColor } from '@/lib/stickers.mjs';
 
 const CAPTION_LIMIT = 2200;
@@ -483,6 +484,23 @@ export default function Editor({ brandId, postId }) {
               ? `끝장 (자동) · ${post.slides.length + 1} / ${post.slides.length + 1}`
               : `${sel + 1} / ${post.slides.length}${closingUrl ? '+끝' : ''} · 스티커는 드래그로 이동, 모서리 핸들로 크기 조절 · 사진은 드래그로 위치 조정`}
           </p>
+          {post.format !== 'reel' && (
+            <div className="stage-size">
+              <div className="seg tight">
+                {RATIOS.map((r) => (
+                  <button
+                    key={r.key}
+                    className={size.width === r.width && size.height === r.height ? 'on' : ''}
+                    onClick={() => update((p) => (p.ratio = r.key))}
+                    title={r.hint}
+                  >
+                    {r.key}
+                  </button>
+                ))}
+              </div>
+              <span className="note">{size.width}×{size.height}</span>
+            </div>
+          )}
         </section>
 
         <aside className="panel">

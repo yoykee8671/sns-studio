@@ -1,16 +1,18 @@
 import { createPost, listPosts } from '@/lib/store.mjs';
 import { TEMPLATES } from '@/lib/templates/index.mjs';
+import { DEFAULT_RATIO, isRatio } from '@/lib/templates/sizes.mjs';
 
 export async function GET() {
   return Response.json({ posts: await listPosts() });
 }
 
-// Creates an empty post from a template: { brand, template, format, slug, source? }
+// Creates an empty post from a template: { brand, template, format, ratio?, slug, source? }
 export async function POST(req) {
-  const { brand, template, format, slug, source } = await req.json();
+  const { brand, template, format, ratio, slug, source } = await req.json();
   const t = TEMPLATES[template];
   if (!t) return Response.json({ error: 'unknown template' }, { status: 400 });
   if (!t.meta.formats.includes(format)) return Response.json({ error: 'unsupported format' }, { status: 400 });
+  if (ratio !== undefined && !isRatio(ratio)) return Response.json({ error: 'unknown ratio' }, { status: 400 });
   try {
     const draft = { format, source };
     const post = await createPost({
@@ -18,6 +20,7 @@ export async function POST(req) {
       slug,
       template,
       format,
+      ratio: format === 'reel' ? undefined : (ratio ?? DEFAULT_RATIO),
       contentType: t.meta.contentType,
       source: t.meta.contentType === 'curation' ? { url: '', handle: '', permission: 'none', dm: '', note: '', ...source } : undefined,
       slides: [t.meta.newSlide(draft)],

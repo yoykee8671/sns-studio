@@ -4,6 +4,7 @@
 // Runs identically in the editor preview (iframe) and the exporter (Playwright).
 import { renderSticker, stickerCss } from '../stickers.mjs';
 import { slideRuntime, escapeHtml, mediaTag } from './runtime.mjs';
+import { feedSizeFor } from './sizes.mjs';
 
 const MARGIN_X = 110; // left/right margin, from the reference layout
 const MARGIN_BOTTOM = 210; // headline block bottom offset
@@ -13,7 +14,7 @@ export const meta = {
   contentType: 'knowledge',
   formats: ['carousel', 'single'],
   mediaTypes: ['image'],
-  sizeFor: () => ({ width: 1080, height: 1350 }),
+  sizeFor: feedSizeFor,
   fields: [
     { key: 'headline', label: '헤드라인' },
     { key: 'body', label: '본문' },
@@ -39,8 +40,8 @@ export const meta = {
  * @param {object} o
  * @param {'preview'|'export'} o.mode  preview enables sticker dragging + reports to the parent frame
  */
-export function renderSlide({ brand, slide, index, mediaSrc, mediaType, logoSvg, mode = 'export' }) {
-  const { width: W, height: H } = meta.sizeFor();
+export function renderSlide({ brand, post, slide, index, mediaSrc, mediaType, logoSvg, mode = 'export' }) {
+  const { width: W, height: H } = meta.sizeFor(post);
   const isCover = index === 0;
   // Values interpolated into CSS/attributes are whitelisted, never passed through raw.
   const focus = /^\d{1,3}% \d{1,3}%$/.test(slide.focus ?? '') ? slide.focus : '50% 50%';

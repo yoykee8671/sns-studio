@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { RATIOS, DEFAULT_RATIO } from '@/lib/templates/sizes.mjs';
 
 const TYPES = [
   { template: 'curation-frame', label: '디깅형', hint: '남의 좋은 콘텐츠 + 우리 코멘트', formats: ['carousel', 'single', 'reel'] },
@@ -15,6 +16,7 @@ export default function NewPost({ brands }) {
   const [brand, setBrand] = useState(brands[0]?.id ?? '');
   const [type, setType] = useState(TYPES[0]);
   const [format, setFormat] = useState('carousel');
+  const [ratio, setRatio] = useState(DEFAULT_RATIO);
   const [slug, setSlug] = useState('');
   const [url, setUrl] = useState('');
   const [handle, setHandle] = useState('');
@@ -33,6 +35,7 @@ export default function NewPost({ brands }) {
           brand,
           template: type.template,
           format,
+          ratio: format === 'reel' ? undefined : ratio,
           slug: slug || handle || 'post',
           source: type.template === 'curation-frame' ? { url, handle: handle.replace(/^@/, '') } : undefined,
         }),
@@ -91,6 +94,21 @@ export default function NewPost({ brands }) {
           ))}
         </div>
       </div>
+      {format !== 'reel' && (
+        <div className="field">
+          <label>사이즈</label>
+          <div className="seg">
+            {RATIOS.map((r) => (
+              <button type="button" key={r.key} className={ratio === r.key ? 'on' : ''} onClick={() => setRatio(r.key)}>
+                {r.key}
+              </button>
+            ))}
+          </div>
+          <p className="note">
+            {RATIOS.filter((r) => r.key === ratio).map((r) => `${r.width}×${r.height} · ${r.hint}`)}
+          </p>
+        </div>
+      )}
       {type.template === 'curation-frame' && (
         <>
           <div className="field">

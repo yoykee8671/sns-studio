@@ -3,19 +3,16 @@
 // (the bottom of a reel is covered by Instagram's UI). Credit line is always visible.
 import { renderSticker, stickerCss } from '../stickers.mjs';
 import { slideRuntime, escapeHtml, mediaTag } from './runtime.mjs';
+import { feedSizeFor } from './sizes.mjs';
 
-const SIZES = {
-  carousel: { width: 1080, height: 1350 },
-  single: { width: 1080, height: 1350 },
-  reel: { width: 1080, height: 1920 },
-};
+const REEL_SIZE = { width: 1080, height: 1920 };
 
 export const meta = {
   label: '디깅형 (원본 + 코멘트)',
   contentType: 'curation',
   formats: ['carousel', 'single', 'reel'],
   mediaTypes: ['image', 'video'],
-  sizeFor: (post) => SIZES[post?.format] ?? SIZES.carousel,
+  sizeFor: (post) => (post?.format === 'reel' ? REEL_SIZE : feedSizeFor(post)),
   fields: [
     { key: 'headline', label: '헤드라인' },
     { key: 'body', label: '코멘트' },

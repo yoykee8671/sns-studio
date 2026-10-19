@@ -140,7 +140,7 @@ export async function listBrands() {
 }
 
 /** Creates content/<brand>/<id>/post.json; `id` gets a numeric suffix if it already exists. */
-export async function createPost({ brand: brandId, slug, template, format, contentType, slides, source }) {
+export async function createPost({ brand: brandId, slug, template, format, ratio, contentType, slides, source }) {
   assertId(brandId);
   const date = new Date().toISOString().slice(0, 7);
   const clean = (slug ?? '').toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '') || 'post';
@@ -154,6 +154,7 @@ export async function createPost({ brand: brandId, slug, template, format, conte
     id,
     brand: brandId,
     format,
+    ...(ratio ? { ratio } : {}),
     contentType,
     template,
     status: 'draft',
