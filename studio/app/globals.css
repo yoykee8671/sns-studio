@@ -78,6 +78,8 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1
 .dirty { margin-left: 8px; color: var(--warn); font-size: 12px; font-weight: 500; }
 .actions { display: flex; gap: 8px; align-items: center; }
 .topbar-danger { color: var(--error); }
+.suggest-row { flex-direction: row; align-items: center; gap: 10px; display: flex; }
+.suggest-row .note { flex: 1; }
 .modal-danger { background: var(--error); color: #fff; border-color: var(--error); }
 .split { display: flex; }
 .split select {
