@@ -29,6 +29,19 @@ export const meta = {
       hidden: (slide) => slide.layout === 'overlay',
     },
     { key: 'fit', label: '원본 맞춤', choices: [[undefined, '자르지 않기'], ['cover', '꽉 채우기']] },
+    {
+      key: 'logo',
+      label: '로고 (표지)',
+      coverOnly: true,
+      choices: [[undefined, '표시'], ['off', '숨김']],
+      hidden: (slide) => slide.layout !== 'overlay',
+    },
+    {
+      key: 'creditTag',
+      label: '출처 (좌측 상단)',
+      choices: [[undefined, '표시'], ['off', '숨김']],
+      hidden: (slide) => slide.layout !== 'overlay',
+    },
   ],
   newSlide: (post) => ({
     headline: '',
@@ -71,10 +84,15 @@ export function renderSlide({ brand, post, slide, index, mediaSrc, mediaType, lo
   const media = `<div class="media-box" data-media-box>
       ${mediaTag({ src: mediaSrc, type: mediaType, mode, className: 'media' })}
     </div>`;
+  // Top placement mirrors the 지식형 carousel: centered logo (cover, toggleable)
+  // and the source line top-left (toggleable).
+  const showOvLogo = isCover && slide.logo !== 'off';
+  const showOvCredit = slide.creditTag !== 'off';
   const overlaid = `${media}
     <div class="ov-shade"></div>
-    ${field('credit', 'ov-credit', 1, '출처 표기', slide.credit)}
-    ${isCover ? `<div class="ov-logo">${logoSvg}</div>` : ''}
+    <div class="ov-shade-top"></div>
+    ${showOvCredit ? field('credit', 'ov-credit', 1, '출처 표기', slide.credit) : ''}
+    ${showOvLogo ? `<div class="ov-logo">${logoSvg}</div>` : ''}
     <div class="ov-bottom" data-avoid="bottom">
       ${field('headline', 'ov-headline', 2, '헤드라인', slide.headline)}
       ${field('body', 'ov-body', 4, '코멘트', slide.body)}
@@ -116,13 +134,17 @@ export function renderSlide({ brand, post, slide, index, mediaSrc, mediaType, lo
     background: linear-gradient(to top,
       rgba(0,0,0,.78) 0%, rgba(0,0,0,.52) ${isReel ? 20 : 22}%, rgba(0,0,0,.18) ${isReel ? 36 : 42}%, rgba(0,0,0,0) ${isReel ? 52 : 58}%);
   }
-  .ov-credit {
-    position: absolute; top: 48px; left: 56px; max-width: 70%;
-    color: #fff; font-size: ${isReel ? 26 : 22}px; letter-spacing: -0.01em; white-space: pre;
-    opacity: .88; text-shadow: 0 1px 6px rgba(0,0,0,.5);
+  .ov-shade-top {
+    position: absolute; left: 0; right: 0; top: 0; height: 260px; pointer-events: none;
+    background: linear-gradient(to bottom, rgba(0,0,0,.28), rgba(0,0,0,0));
   }
-  .ov-logo { position: absolute; top: 44px; right: 56px; color: #fff; }
-  .ov-logo svg { display: block; width: ${isReel ? 200 : 170}px; height: auto; }
+  .ov-credit {
+    position: absolute; top: 56px; left: 110px; max-width: calc(100% - 220px);
+    color: #fff; font-size: 19px; letter-spacing: -0.005em; white-space: pre;
+    opacity: .9; text-shadow: 0 1px 6px rgba(0,0,0,.45);
+  }
+  .ov-logo { position: absolute; top: 56px; left: 50%; transform: translateX(-50%); color: #fff; }
+  .ov-logo svg { display: block; width: 300px; height: auto; }
   .ov-bottom {
     position: absolute; left: 64px; right: 64px; bottom: ${isReel ? 330 : 76}px; color: #fff;
   }
