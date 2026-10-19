@@ -10,7 +10,7 @@ export async function GET(_req, { params }) {
       imageStatus(brand, post),
       closingImage(brand),
     ]);
-    return Response.json({ post, brand, logoSvg, images, closing, publish: publishConfig() });
+    return Response.json({ post, brand, logoSvg, images, closing, publish: publishConfig(brand) });
   } catch (err) {
     return Response.json({ error: err.message }, { status: 404 });
   }

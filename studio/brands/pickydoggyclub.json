@@ -1,6 +1,7 @@
 {
   "id": "pickydoggyclub",
   "handle": "@pickydoggyclub",
+  "order": 1,
   "assetDir": "../@pickydoggyclub",
   "logo": {
     "horizontal": "brand image/logo-svg/pdc-logo-horizontal.svg",
@@ -30,5 +31,9 @@
     "bodyMaxLines": 2,
     "headlineMaxLines": 2,
     "postit": "optional design element, added per slide only when needed"
+  },
+  "ig": {
+    "userIdEnv": "IG_USER_ID",
+    "tokenEnv": "IG_ACCESS_TOKEN"
   }
 }

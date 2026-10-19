@@ -8,10 +8,20 @@ const GRAPH = `https://${process.env.IG_GRAPH_HOST ?? 'graph.instagram.com'}/${
   process.env.META_GRAPH_VERSION ?? 'v26.0'
 }`;
 
-export function publishConfig() {
+// Each brand publishes to its own Instagram account: the brand JSON's `ig` block
+// names the env vars holding that account's user id and token (pickydoggyclub
+// keeps the original IG_USER_ID / IG_ACCESS_TOKEN names).
+export function publishConfig(brand) {
+  const ig = brand?.ig;
+  if (!ig?.userIdEnv || !ig?.tokenEnv) {
+    return {
+      ready: false,
+      missing: [{ key: `brands/${brand?.id}.json`, label: 'ig.userIdEnv · ig.tokenEnv (이 계정이 쓸 환경변수 이름) 설정' }],
+    };
+  }
   const required = {
-    IG_USER_ID: 'Instagram 비즈니스 계정 ID',
-    IG_ACCESS_TOKEN: 'Meta 액세스 토큰',
+    [ig.userIdEnv]: `${brand.handle} Instagram 비즈니스 계정 ID`,
+    [ig.tokenEnv]: `${brand.handle} Meta 액세스 토큰`,
     BLOB_READ_WRITE_TOKEN: '이미지 공개 URL용 Vercel Blob 토큰',
   };
   const missing = Object.entries(required)
@@ -20,9 +30,9 @@ export function publishConfig() {
   return { ready: missing.length === 0, missing };
 }
 
-async function graph(pathname, params, method = 'POST') {
+async function graph(pathname, params, token, method = 'POST') {
   const url = new URL(`${GRAPH}/${pathname}`);
-  const body = new URLSearchParams({ ...params, access_token: process.env.IG_ACCESS_TOKEN });
+  const body = new URLSearchParams({ ...params, access_token: token });
   const res =
     method === 'GET'
       ? await fetch(`${url}?${body}`)
@@ -32,10 +42,10 @@ async function graph(pathname, params, method = 'POST') {
   return json;
 }
 
-async function waitUntilReady(containerId) {
+async function waitUntilReady(containerId, token) {
   // Videos can take a few minutes to process on Instagram's side.
   for (let i = 0; i < 100; i++) {
-    const { status_code: status } = await graph(containerId, { fields: 'status_code' }, 'GET');
+    const { status_code: status } = await graph(containerId, { fields: 'status_code' }, token, 'GET');
     if (status === 'FINISHED') return;
     if (status === 'ERROR' || status === 'EXPIRED') throw new Error(`컨테이너 상태: ${status}`);
     await new Promise((r) => setTimeout(r, 3000));
@@ -62,10 +72,11 @@ const itemParams = (item) =>
 
 /**
  * A single video is always published as a reel (Instagram no longer has plain feed videos).
- * @param {{ items: {url: string, kind: 'image'|'video'}[], caption: string }} o
+ * @param {{ brand: object, items: {url: string, kind: 'image'|'video'}[], caption: string }} o
  */
-export async function publish({ items, caption }) {
-  const user = process.env.IG_USER_ID;
+export async function publish({ brand, items, caption }) {
+  const user = process.env[brand.ig.userIdEnv];
+  const token = process.env[brand.ig.tokenEnv];
   let creationId;
   if (items.length === 1) {
     const [item] = items;
@@ -73,22 +84,22 @@ export async function publish({ items, caption }) {
       item.kind === 'video'
         ? { media_type: 'REELS', video_url: item.url, share_to_feed: 'true', caption }
         : { image_url: item.url, caption };
-    ({ id: creationId } = await graph(`${user}/media`, params));
+    ({ id: creationId } = await graph(`${user}/media`, params, token));
   } else {
     const children = [];
     for (const item of items) {
-      const { id } = await graph(`${user}/media`, { ...itemParams(item), is_carousel_item: 'true' });
+      const { id } = await graph(`${user}/media`, { ...itemParams(item), is_carousel_item: 'true' }, token);
       children.push(id);
     }
-    for (const id of children) await waitUntilReady(id);
+    for (const id of children) await waitUntilReady(id, token);
     ({ id: creationId } = await graph(`${user}/media`, {
       media_type: 'CAROUSEL',
       children: children.join(','),
       caption,
-    }));
+    }, token));
   }
-  await waitUntilReady(creationId);
-  const { id: mediaId } = await graph(`${user}/media_publish`, { creation_id: creationId });
-  const { permalink } = await graph(mediaId, { fields: 'permalink' }, 'GET');
+  await waitUntilReady(creationId, token);
+  const { id: mediaId } = await graph(`${user}/media_publish`, { creation_id: creationId }, token);
+  const { permalink } = await graph(mediaId, { fields: 'permalink' }, token, 'GET');
   return { mediaId, permalink };
 }
