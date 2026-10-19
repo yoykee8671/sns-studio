@@ -46,6 +46,27 @@ export async function putObject(key, data, contentType = 'application/octet-stre
   if (!res.ok) throw new Error(`storage write failed (${res.status}): ${key}`);
 }
 
+/**
+ * Signed direct-upload URL: the browser PUTs the file body straight to Supabase,
+ * bypassing the 4.5MB request limit of our Vercel functions.
+ */
+export async function signUpload(key) {
+  const send = () =>
+    fetch(`${BASE}/storage/v1/object/upload/sign/${BUCKET}/${key}`, {
+      method: 'POST',
+      headers: headers({ 'content-type': 'application/json' }),
+      body: JSON.stringify({}),
+    });
+  let res = await send();
+  if (!res.ok && (await res.clone().text()).includes('Bucket not found')) {
+    await ensureBucket();
+    res = await send();
+  }
+  if (!res.ok) throw new Error(`signed upload failed (${res.status}): ${key}`);
+  const { url } = await res.json(); // "/object/upload/sign/<bucket>/<key>?token=…"
+  return `${BASE}/storage/v1${url.replace(/^\/storage\/v1/, '')}`;
+}
+
 /** Server-side copy (used for post.json history snapshots). Missing source is ignored. */
 export async function copyObject(sourceKey, destinationKey) {
   await fetch(`${BASE}/storage/v1/object/copy`, {
