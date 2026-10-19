@@ -1,0 +1,32 @@
+{
+  "id": "pickydoggymarket",
+  "handle": "@pickydoggymarket",
+  "order": 4,
+  "assetDir": "../@pickydoggymarket",
+  "logo": {
+    "horizontal": "brand image/logo-svg/pdm-logo-horizontal.svg",
+    "stacked": "brand image/logo-svg/pdm-logo-stacked.svg"
+  },
+  "colors": {
+    "blue": "#3B63BC",
+    "lime": "#EBFA6A",
+    "lightBlue": "#D6DEF8",
+    "ink": "#111111",
+    "paper": "#FFFFFF"
+  },
+  "fonts": {
+    "headline": "Pretendard",
+    "body": "Pretendard",
+    "comment": "Freesentation",
+    "latin": "Poppins"
+  },
+  "voice": {
+    "speech": "존댓말",
+    "persona": "픽키도기 마켓 계정",
+    "humor": "light"
+  },
+  "ig": {
+    "userIdEnv": "IG_USER_ID_PDM",
+    "tokenEnv": "IG_ACCESS_TOKEN_PDM"
+  }
+}

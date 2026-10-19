@@ -1,4 +1,4 @@
-import { savePost } from '@/lib/store.mjs';
+import { savePost, loadBrand } from '@/lib/store.mjs';
 import { renderPost, captionText, permissionError, ImageChangedError } from '@/lib/render-server.mjs';
 import { publishConfig, uploadMedia, publish } from '@/lib/instagram.mjs';
 
@@ -7,7 +7,8 @@ export const maxDuration = 300;
 // Saves the post, renders JPEGs/MP4s, uploads them to public URLs and publishes to Instagram.
 export async function POST(req, { params }) {
   const { brand: brandId, id } = await params;
-  const config = publishConfig();
+  const brand = await loadBrand(brandId);
+  const config = publishConfig(brand);
   if (!config.ready) return Response.json({ error: 'not configured', missing: config.missing }, { status: 412 });
 
   const { post } = await req.json();
@@ -24,7 +25,7 @@ export async function POST(req, { params }) {
     let saved = await savePost(brandId, id, post);
     const { files } = await renderPost(saved, { format: 'jpg', quality: 95 });
     const items = await uploadMedia(`${brandId}/${id}`, files);
-    const result = await publish({ items, caption: captionText(saved).trim() });
+    const result = await publish({ brand, items, caption: captionText(saved).trim() });
     saved = await savePost(brandId, id, {
       ...saved,
       status: 'published',

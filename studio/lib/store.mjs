@@ -36,8 +36,22 @@ export async function loadBrand(brandId) {
   return { ...brand, assetPath: path.resolve(ROOT, brand.assetDir) };
 }
 
-export const loadLogoSvg = (brand, variant = 'horizontal') =>
-  readFile(path.join(brand.assetPath, brand.logo[variant]), 'utf8');
+const escapeXml = (s) =>
+  s.replace(/[<>&"']/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' }[c]));
+
+export async function loadLogoSvg(brand, variant = 'horizontal') {
+  const rel = brand.logo?.[variant];
+  if (rel) {
+    try {
+      return await readFile(path.join(brand.assetPath, rel), 'utf8');
+    } catch {}
+  }
+  // Brands without logo files yet get a plain wordmark (currentColor follows the
+  // template's text color). Drop real SVGs at the brand.logo paths to replace it.
+  const name = escapeXml(brand.handle ?? brand.id);
+  const font = escapeXml(brand.fonts?.headline ?? 'Pretendard');
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 72"><text x="320" y="51" text-anchor="middle" font-family="'${font}', sans-serif" font-size="42" font-weight="700" letter-spacing="-1" fill="currentColor">${name}</text></svg>`;
+}
 
 /** Resolves a brand-relative asset path, refusing anything outside the brand folder. */
 export function resolveAsset(brand, rel) {
@@ -134,9 +148,10 @@ export async function listBrands() {
   const out = [];
   for (const f of files.filter((f) => f.endsWith('.json'))) {
     const b = JSON.parse(await readFile(path.join(ROOT, 'brands', f), 'utf8'));
-    out.push({ id: b.id, handle: b.handle });
+    out.push({ id: b.id, handle: b.handle, order: b.order ?? 99 });
   }
-  return out;
+  // `order` in the brand JSON pins the main accounts to the top of pickers.
+  return out.sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
 }
 
 /** Creates content/<brand>/<id>/post.json; `id` gets a numeric suffix if it already exists. */
