@@ -40,6 +40,14 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1
 .home-head h1 { margin: 0 0 6px; font-size: 28px; letter-spacing: -0.02em; }
 .home-head p { margin: 0 0 28px; color: var(--muted); }
 .post-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.post-item { position: relative; }
+.post-delete {
+  position: absolute; top: 10px; right: 10px; border: 1px solid var(--line);
+  background: var(--surface); color: var(--muted); border-radius: 7px;
+  padding: 4px 9px; font-size: 12px; line-height: 1;
+}
+.post-delete:hover { color: var(--error); border-color: var(--error); }
+.post-delete.armed { color: #fff; background: var(--error); border-color: var(--error); }
 .post-card {
   display: grid; gap: 4px; padding: 16px 18px; background: var(--surface);
   border: 1px solid var(--line); border-radius: var(--radius); text-decoration: none; color: inherit;
@@ -69,6 +77,8 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1
 .title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dirty { margin-left: 8px; color: var(--warn); font-size: 12px; font-weight: 500; }
 .actions { display: flex; gap: 8px; align-items: center; }
+.topbar-danger { color: var(--error); }
+.modal-danger { background: var(--error); color: #fff; border-color: var(--error); }
 .split { display: flex; }
 .split select {
   border: 1px solid var(--line); border-right: 0; border-radius: 8px 0 0 8px;

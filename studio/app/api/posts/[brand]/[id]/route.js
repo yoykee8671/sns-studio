@@ -1,4 +1,4 @@
-import { readPost, savePost, loadBrand, loadLogoSvg, imageStatus, closingImage } from '@/lib/store.mjs';
+import { readPost, savePost, deletePost, loadBrand, loadLogoSvg, imageStatus, closingImage } from '@/lib/store.mjs';
 import { publishConfig } from '@/lib/instagram.mjs';
 
 export async function GET(_req, { params }) {
@@ -14,6 +14,19 @@ export async function GET(_req, { params }) {
   } catch (err) {
     return Response.json({ error: err.message }, { status: 404 });
   }
+}
+
+// Permanently removes the post (content, history, uploaded media). The published
+// Instagram post, if any, is not touched — deletion is app-side only.
+export async function DELETE(_req, { params }) {
+  const { brand: brandId, id } = await params;
+  try {
+    await readPost(brandId, id); // 404s before touching storage
+  } catch (err) {
+    return Response.json({ error: err.message }, { status: 404 });
+  }
+  await deletePost(brandId, id);
+  return Response.json({ ok: true });
 }
 
 export async function PUT(req, { params }) {

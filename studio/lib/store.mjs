@@ -3,7 +3,7 @@
 // Brand assets (logos, closing images) always come from the repo's brand folders.
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { readFile, writeFile, mkdir, readdir, copyFile, stat } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, readdir, copyFile, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { STICKER_TYPES, normalizeSticker } from './stickers.mjs';
 import * as blob from './blob-store.mjs';
@@ -253,6 +253,15 @@ export async function savePost(brandId, postId, post) {
   }
   await writeFile(file, `${JSON.stringify(next, null, 2)}\n`);
   return next;
+}
+
+/** Permanently removes a post: post.json, edit history and uploaded media. */
+export async function deletePost(brandId, postId) {
+  if (supabaseEnabled) {
+    await blob.deletePrefix(postKey(brandId, postId));
+    return;
+  }
+  await rm(postDir(brandId, postId), { recursive: true, force: true });
 }
 
 const listDirNames = async (prefix) =>

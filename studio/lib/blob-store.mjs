@@ -60,6 +60,29 @@ export async function objectExists(key) {
   return res.ok || res.status === 206;
 }
 
+/** Every object key under `prefix`, recursively. */
+export async function listKeys(prefix) {
+  const out = [];
+  for (const e of await listDir(prefix)) {
+    const key = prefix ? `${prefix}/${e.name}` : e.name;
+    if (e.folder) out.push(...(await listKeys(key)));
+    else out.push(key);
+  }
+  return out;
+}
+
+/** Permanently deletes every object under `prefix`. */
+export async function deletePrefix(prefix) {
+  const keys = await listKeys(prefix);
+  if (!keys.length) return;
+  const res = await fetch(`${BASE}/storage/v1/object/${BUCKET}`, {
+    method: 'DELETE',
+    headers: headers({ 'content-type': 'application/json' }),
+    body: JSON.stringify({ prefixes: keys }),
+  });
+  if (!res.ok) throw new Error(`storage delete failed (${res.status}): ${prefix}`);
+}
+
 /** One directory level under `prefix`: [{ name, folder }]. */
 export async function listDir(prefix) {
   const res = await fetch(`${BASE}/storage/v1/object/list/${BUCKET}`, {
