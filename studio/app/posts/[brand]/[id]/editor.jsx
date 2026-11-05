@@ -24,6 +24,7 @@ const IMAGE_STATE = {
   unpinned: ['고정 안 됨', 'warn'],
   changed: ['파일이 바뀌었어요', 'error'],
   missing: ['파일 없음', 'error'],
+  none: ['사진 없이 가요', 'ok'],
 };
 
 const assetUrl = (brandId, rel) =>
@@ -664,15 +665,17 @@ export default function Editor({ brandId, postId }) {
                 </div>
               )}
 
-              <MediaRow
-                slide={slide}
-                status={images[sel]}
-                accept={sMeta.mediaTypes.includes('video') ? 'image/*,video/*' : 'image/*'}
-                busy={busy === 'upload'}
-                onUpload={upload}
-                onPin={() => updateSlide(sel, { imageSha256: images[sel].sha })}
-                onZoom={(z) => updateSlide(sel, { zoom: z === 1 ? undefined : z })}
-              />
+              {sMeta.mediaTypes.length > 0 && (
+                <MediaRow
+                  slide={slide}
+                  status={images[sel]}
+                  accept={sMeta.mediaTypes.includes('video') ? 'image/*,video/*' : 'image/*'}
+                  busy={busy === 'upload'}
+                  onUpload={upload}
+                  onPin={() => updateSlide(sel, { imageSha256: images[sel].sha })}
+                  onZoom={(z) => updateSlide(sel, { zoom: z === 1 ? undefined : z })}
+                />
+              )}
 
               <div className="field suggest-row">
                 <button onClick={suggest} disabled={!!busy}>
