@@ -321,6 +321,41 @@ export default function Editor({ brandId, postId }) {
     }
   };
 
+  // Manual publish marking (실제 발행은 Meta Business Suite 예약발행이라 앱이 시점을 모름).
+  // Optionally frees server storage by deleting the post's uploaded media.
+  const markPublished = async (purge) => {
+    setModal(null);
+    setBusy('status');
+    try {
+      const next = structuredClone(post);
+      next.status = 'published';
+      const res = await fetch(apiBase, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ post: next }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error);
+      setPost(d.post);
+      setImages(d.images);
+      setDirty(false);
+      if (purge) {
+        const r2 = await fetch(`${apiBase}/purge`, { method: 'POST' });
+        const d2 = await r2.json();
+        if (!r2.ok) throw new Error(d2.error);
+        setPost(d2.post);
+        setImages(d2.images);
+        notify('발행됨으로 표시하고 원본 미디어를 정리했어요.');
+      } else {
+        notify('발행됨으로 표시했어요.');
+      }
+    } catch (e) {
+      notify(`상태 변경 실패: ${e.message}`, 'error');
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const doDelete = async () => {
     setBusy('delete');
     try {
@@ -507,7 +542,21 @@ export default function Editor({ brandId, postId }) {
             <div className="crumb">@{brandId} · {meta.label} · {FORMAT_LABEL[post.format] ?? post.format}</div>
             <div className="title">
               {title}
-              <span className={`badge badge-${post.status}`}>{STATUS[post.status] ?? post.status}</span>
+              <select
+                className={`status-select badge badge-${post.status}`}
+                value={post.status}
+                aria-label="게시물 상태"
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v === 'published') setModal({ kind: 'markPublished' });
+                  else update((p) => (p.status = v));
+                }}
+              >
+                {Object.entries(STATUS).map(([v, label]) => (
+                  <option key={v} value={v}>{label}</option>
+                ))}
+              </select>
+              {post.mediaPurged && <span className="badge">미디어 정리됨</span>}
               {dirty && <span className="dirty">저장 안 됨</span>}
             </div>
           </div>
@@ -960,6 +1009,23 @@ export default function Editor({ brandId, postId }) {
                 <div className="modal-actions">
                   <button onClick={() => setModal(null)}>취소</button>
                   <button className="primary" onClick={doPublish}>발행하기</button>
+                </div>
+              </>
+            )}
+            {modal.kind === 'markPublished' && (
+              <>
+                <h2>발행됨으로 표시할까요?</h2>
+                <p>
+                  Instagram에 올린 뒤 기록용으로 상태를 바꿔요. 원본 사진·영상을 서버에서
+                  정리하면 저장 용량이 줄어요 — 카드는 빈 사진 칸으로 남고, 내보낸 파일과
+                  Instagram 게시물은 그대로예요. 정리는 되돌릴 수 없어요.
+                </p>
+                <div className="modal-actions">
+                  <button onClick={() => setModal(null)}>취소</button>
+                  <button onClick={() => markPublished(false)}>표시만 하기</button>
+                  <button className="primary" onClick={() => markPublished(true)}>
+                    표시 + 미디어 정리
+                  </button>
                 </div>
               </>
             )}
