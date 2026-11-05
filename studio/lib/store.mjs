@@ -6,6 +6,7 @@ import { existsSync } from 'node:fs';
 import { readFile, writeFile, mkdir, readdir, copyFile, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { STICKER_TYPES, normalizeSticker } from './stickers.mjs';
+import { resolveTemplate } from './templates/index.mjs';
 import * as blob from './blob-store.mjs';
 
 export const { supabaseEnabled } = blob;
@@ -327,6 +328,11 @@ export async function imageStatus(brand, post) {
   return Promise.all(
     post.slides.map(async (slide) => {
       try {
+        // Text-only templates (and optional-photo templates without a photo) have no
+        // media to pin; 'none' passes the export gate instead of blocking as 'missing'.
+        const t = resolveTemplate(post, slide).meta;
+        if (!t.mediaTypes.length) return { state: 'none' };
+        if (t.mediaOptional && !slide.media && !slide.image) return { state: 'none' };
         if (slide.media && supabaseEnabled) {
           // Bucket uploads get unique names and are pinned at upload time, so a cheap
           // existence probe replaces re-hashing (videos would be costly to re-download).

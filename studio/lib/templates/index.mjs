@@ -1,10 +1,16 @@
 // Template registry (static imports so both Next.js bundles and Node scripts resolve them).
 import * as editorialPhoto from './editorial-photo.mjs';
 import * as curationFrame from './curation-frame.mjs';
+import * as numberedSection from './numbered-section.mjs';
+import * as infoList from './info-list.mjs';
+import * as itemIntro from './item-intro.mjs';
 
 export const TEMPLATES = {
   'editorial-photo': editorialPhoto,
   'curation-frame': curationFrame,
+  'numbered-section': numberedSection,
+  'info-list': infoList,
+  'item-intro': itemIntro,
 };
 
 export function getTemplate(name) {
