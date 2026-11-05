@@ -13,6 +13,7 @@ const MARGIN_BOTTOM = 210; // headline block bottom offset
 export const meta = {
   label: '지식형 (사진 풀블리드)',
   contentType: 'knowledge',
+  role: 'any', // cover/inner split is built into the template (index === 0)
   formats: ['carousel', 'single'],
   mediaTypes: ['image'],
   sizeFor: feedSizeFor,

@@ -13,6 +13,7 @@ const REEL_SIZE = { width: 1080, height: 1920 };
 export const meta = {
   label: '디깅형 (원본 + 코멘트)',
   contentType: 'curation',
+  role: 'any', // cover/inner split is built into the template (index === 0)
   formats: ['carousel', 'single', 'reel'],
   mediaTypes: ['image', 'video'],
   sizeFor: (post) => (post?.format === 'reel' ? REEL_SIZE : feedSizeFor(post)),
