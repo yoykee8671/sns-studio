@@ -121,11 +121,11 @@ export function renderSlide({ brand, post, slide, index, mediaSrc, mediaType, lo
     font-size: ${isReel ? 58 : 46}px; line-height: 1.3; letter-spacing: -0.03em; white-space: pre;
   }
   .body {
-    margin-top: 14px; font-size: ${isReel ? 34 : 28}px; line-height: 1.5; letter-spacing: -0.02em;
+    margin-top: 14px; font-size: ${isReel ? 34 : 32}px; line-height: 1.5; letter-spacing: -0.02em;
     white-space: pre; opacity: .82;
   }
   .foot { margin-top: 26px; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
-  .credit { font-size: ${isReel ? 26 : 22}px; letter-spacing: -0.01em; white-space: pre; opacity: .6; min-width: 0; }
+  .credit { font-size: ${isReel ? 27.5 : 23.5}px; letter-spacing: -0.01em; white-space: pre; opacity: .6; min-width: 0; }
   .logo svg { display: block; width: ${isReel ? 240 : 200}px; height: auto; }
 
   /* 영상 위 텍스트: media fills the frame, text sits on a bottom gradient. */
@@ -140,7 +140,7 @@ export function renderSlide({ brand, post, slide, index, mediaSrc, mediaType, lo
   }
   .ov-credit {
     position: absolute; top: 56px; left: 110px; max-width: calc(100% - 220px);
-    color: #fff; font-size: 19px; letter-spacing: -0.005em; white-space: pre;
+    color: #fff; font-size: 20.5px; letter-spacing: -0.005em; white-space: pre;
     opacity: .9; text-shadow: 0 1px 6px rgba(0,0,0,.45);
   }
   .ov-logo { position: absolute; top: 56px; left: 50%; transform: translateX(-50%); color: #fff; }
@@ -154,7 +154,7 @@ export function renderSlide({ brand, post, slide, index, mediaSrc, mediaType, lo
     text-shadow: 0 2px 12px rgba(0,0,0,.35), 0 1px 4px rgba(0,0,0,.25);
   }
   .ov-body {
-    margin-top: 16px; font-size: ${isReel ? 32 : 28}px; line-height: 1.55; letter-spacing: -0.02em;
+    margin-top: 16px; font-size: 32px; line-height: 1.55; letter-spacing: -0.02em;
     white-space: pre; opacity: .92; text-shadow: 0 1px 8px rgba(0,0,0,.35);
   }
 
