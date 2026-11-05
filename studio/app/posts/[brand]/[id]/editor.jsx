@@ -100,6 +100,7 @@ export default function Editor({ brandId, postId }) {
   const [tab, setTab] = useState('slide');
   const [format, setFormat] = useState('png');
   const [sugg, setSugg] = useState({}); // per-slide: { list: [{headline, body}], cursor }
+  const [capDraft, setCapDraft] = useState(null); // { detailed, short, hashtags, view }
   const [loadError, setLoadError] = useState(null);
 
   const mainFrame = useRef(null);
@@ -296,6 +297,25 @@ export default function Editor({ brandId, postId }) {
       notify(`추천 1/${candidates.length} — 다시 누르면 다음 문구가 나와요.`);
     } catch (e) {
       notify(`문구 추천 실패: ${e.message}`, 'error');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // Drafts an Instagram caption (detailed/short + hashtags) from all slides' text.
+  const suggestCaption = async () => {
+    setBusy('caption');
+    try {
+      const res = await fetch(`${apiBase}/caption`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ post }),
+      });
+      if (!res.ok) throw new Error(await errorOf(res));
+      const { draft } = await res.json();
+      setCapDraft({ ...draft, view: 'detailed' });
+    } catch (e) {
+      notify(`캡션 초안 실패: ${e.message}`, 'error');
     } finally {
       setBusy(null);
     }
@@ -809,6 +829,47 @@ export default function Editor({ brandId, postId }) {
 
           {tab === 'caption' && (
             <div className="panel-body">
+              <div className="field suggest-row">
+                <button onClick={suggestCaption} disabled={!!busy}>
+                  {busy === 'caption' ? '초안 만드는 중…' : '✨ 캡션 초안'}
+                </button>
+                <p className="note">카드에 쓴 글로 캡션과 해시태그 초안을 만들어요.</p>
+              </div>
+              {capDraft && (
+                <div className="field cap-draft">
+                  <div className="seg tight">
+                    {[['detailed', '자세히'], ['short', '짧게']].map(([v, label]) => (
+                      <button
+                        key={v}
+                        className={capDraft.view === v ? 'on' : ''}
+                        onClick={() => setCapDraft((d) => ({ ...d, view: v }))}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <pre className="cap-preview">{capDraft[capDraft.view]}</pre>
+                  <p className="note">{capDraft.hashtags.map((t) => `#${t}`).join(' ')}</p>
+                  <div className="slide-tools">
+                    <button
+                      onClick={() => {
+                        update((p) => (p.caption = capDraft[capDraft.view]));
+                        notify('캡션에 넣었어요. 저장을 눌러야 남아요.');
+                      }}
+                    >
+                      캡션에 넣기
+                    </button>
+                    <button
+                      onClick={() => {
+                        update((p) => (p.hashtags = capDraft.hashtags));
+                        notify('해시태그를 바꿨어요. 저장을 눌러야 남아요.');
+                      }}
+                    >
+                      해시태그 넣기
+                    </button>
+                  </div>
+                </div>
+              )}
               <div className="field">
                 <label>
                   캡션
