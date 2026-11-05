@@ -313,6 +313,7 @@ export async function listPosts() {
           contentType: post.contentType,
           title: post.slides[0]?.headline?.replace(/\n/g, ' ') ?? postId,
           slides: post.slides.length,
+          series: post.series ?? null,
           updatedAt: post.updatedAt ?? null,
         });
       } catch {

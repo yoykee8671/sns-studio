@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { listPosts, listBrands } from '@/lib/store.mjs';
+import { loadSeries } from '@/lib/series.mjs';
 import NewPost from './new-post';
+import SeriesSection from './series-section';
 import DeletePostButton from './delete-post-button';
 
 export const dynamic = 'force-dynamic';
@@ -11,6 +13,13 @@ const FORMAT = { carousel: '캐러셀', single: '단일', reel: '릴스' };
 
 export default async function Home() {
   const [posts, brands] = await Promise.all([listPosts(), listBrands()]);
+  const seriesData = await Promise.all(
+    brands.map(async (b) => ({
+      brand: b.id,
+      handle: b.handle ?? `@${b.id}`,
+      series: (await loadSeries(b.id)).series,
+    })),
+  );
   return (
     <main className="home">
       <header className="home-head">
@@ -18,6 +27,7 @@ export default async function Home() {
         <p>계정별 피드를 미리보고 마지막 QA를 한 뒤 내려받거나 발행해요.</p>
         <NewPost brands={brands} />
       </header>
+      <SeriesSection data={seriesData} posts={posts} />
       <ul className="post-list">
         {posts.map((p) => (
           <li key={`${p.brand}/${p.id}`} className="post-item">
@@ -25,6 +35,7 @@ export default async function Home() {
               <span className="post-brand">@{p.brand}</span>
               <strong className="post-title">{p.title}</strong>
               <span className="post-meta">
+                {p.series && <span className="badge badge-series">{String(p.series.no).padStart(3, '0')}호</span>}{' '}
                 {TYPE[p.contentType] ?? p.contentType} · {FORMAT[p.format] ?? p.format} {p.slides}장 ·{' '}
                 <span className={`badge badge-${p.status}`}>{STATUS[p.status] ?? p.status}</span>
               </span>

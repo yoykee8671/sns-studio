@@ -64,6 +64,27 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1
 }
 .badge-published { background: #dff3e7; color: var(--ok); }
 .badge-approved { background: var(--accent-soft); color: var(--accent); }
+.badge-series { margin-left: 0; background: var(--accent-soft); color: var(--accent); }
+
+/* 연재 관리 */
+.series { margin: 0 0 22px; }
+.series-toggle {
+  border: 1px solid var(--line); background: var(--surface); border-radius: var(--radius);
+  padding: 10px 16px; font-weight: 600; width: 100%; text-align: left;
+}
+.series-body {
+  margin-top: 10px; display: grid; gap: 18px; padding: 16px 18px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+}
+.series-brand h3 { margin: 0 0 10px; font-size: 14px; color: var(--muted); }
+.series-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 0; border-top: 1px solid var(--line); flex-wrap: wrap;
+}
+.series-info { display: grid; gap: 2px; }
+.series-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.series-new { display: flex; gap: 8px; margin-top: 10px; }
+.series-new .text-input { flex: 1; }
 
 /* Editor layout */
 .editor { display: grid; grid-template-rows: 64px auto 1fr; height: 100vh; }
