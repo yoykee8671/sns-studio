@@ -4,7 +4,7 @@
 // The per-slide 'overlay' layout instead puts the media full-bleed and overlays the text:
 // credit top-left, headline/comment on a bottom gradient (reference: biscit.co.kr feed).
 import { renderSticker, stickerCss } from '../stickers.mjs';
-import { slideRuntime, mediaTag } from './runtime.mjs';
+import { slideRuntime, mediaTag, fieldStyle } from './runtime.mjs';
 import { renderMarkup, brandPalette } from './markup.mjs';
 import { feedSizeFor } from './sizes.mjs';
 
@@ -69,18 +69,18 @@ export function renderSlide({ brand, post, slide, index, mediaSrc, mediaType, lo
   const fg = dark ? '#ffffff' : colors.ink;
   const stickers = (slide.stickers ?? []).map((st) => renderSticker(st, brand)).join('');
   const palette = brandPalette(brand);
-  const field = (key, cls, max, label, text) =>
-    text ? `<div class="${cls}" data-field="${key}" data-max-lines="${max}" data-label="${label}">${renderMarkup(text, palette)}</div>` : '';
+  const field = (key, cls, max, label, text, basePx) =>
+    text ? `<div class="${cls}" data-field="${key}" data-max-lines="${max}" data-label="${label}" style="${basePx ? fieldStyle(slide, key, basePx) : ''}">${renderMarkup(text, palette)}</div>` : '';
 
   const onVideo = slide.layout === 'overlay';
   // Full-bleed layout letterboxes on black; the band layout keeps the theme color.
   const baseColor = onVideo ? '#000000' : bg;
 
   const band = `<div class="band">
-      ${field('headline', 'headline', 2, '헤드라인', slide.headline)}
-      ${field('body', 'body', 2, '코멘트', slide.body)}
+      ${field('headline', 'headline', 2, '헤드라인', slide.headline, isReel ? 58 : 46)}
+      ${field('body', 'body', 2, '코멘트', slide.body, isReel ? 34 : 32)}
       <div class="foot">
-        ${field('credit', 'credit', 1, '출처 표기', slide.credit) || '<span></span>'}
+        ${field('credit', 'credit', 1, '출처 표기', slide.credit, isReel ? 27.5 : 23.5) || '<span></span>'}
         ${isCover ? `<div class="logo">${logoSvg}</div>` : ''}
       </div>
     </div>`;
@@ -94,11 +94,11 @@ export function renderSlide({ brand, post, slide, index, mediaSrc, mediaType, lo
   const overlaid = `${media}
     <div class="ov-shade"></div>
     <div class="ov-shade-top"></div>
-    ${showOvCredit ? field('credit', 'ov-credit', 1, '출처 표기', slide.credit) : ''}
+    ${showOvCredit ? field('credit', 'ov-credit', 1, '출처 표기', slide.credit, 20.5) : ''}
     ${showOvLogo ? `<div class="ov-logo">${logoSvg}</div>` : ''}
     <div class="ov-bottom" data-avoid="bottom">
-      ${field('headline', 'ov-headline', 2, '헤드라인', slide.headline)}
-      ${field('body', 'ov-body', 4, '코멘트', slide.body)}
+      ${field('headline', 'ov-headline', 2, '헤드라인', slide.headline, isReel ? 54 : 46)}
+      ${field('body', 'ov-body', 4, '코멘트', slide.body, 32)}
     </div>`;
 
   return `<!doctype html>

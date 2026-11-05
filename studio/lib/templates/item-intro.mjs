@@ -1,7 +1,7 @@
 // 속지: item introduction page — accent "01." + item name, a boxed product photo,
 // a one-line quote and a short body, all centered on paper. For 추천템 content.
 import { renderSticker, stickerCss } from '../stickers.mjs';
-import { slideRuntime, mediaTag } from './runtime.mjs';
+import { slideRuntime, mediaTag, fieldStyle } from './runtime.mjs';
 import { renderMarkup, brandPalette } from './markup.mjs';
 import { feedSizeFor } from './sizes.mjs';
 
@@ -87,11 +87,11 @@ export function renderSlide({ brand, post, slide, mediaSrc, mediaType, mode = 'e
   <div class="wrap">
     <div class="head">
       ${no ? `<span class="num" data-field="no" data-max-lines="1" data-label="번호">${renderMarkup(no, palette)}.</span>` : ''}
-      <span data-field="name" data-max-lines="2" data-label="아이템 이름">${renderMarkup(slide.name ?? '', palette)}</span>
+      <span data-field="name" data-max-lines="2" data-label="아이템 이름" style="${fieldStyle(slide, 'name', 46)}">${renderMarkup(slide.name ?? '', palette)}</span>
     </div>
     <div class="photo-box" data-media-box>${mediaTag({ src: mediaSrc, type: mediaType, mode, className: 'media' })}</div>
-    ${slide.tagline ? `<div class="tagline" data-field="tagline" data-max-lines="2" data-label="한 줄 설명">${renderMarkup(slide.tagline, palette)}</div>` : ''}
-    ${slide.body ? `<div class="body" data-field="body" data-max-lines="5" data-label="본문">${renderMarkup(slide.body, palette)}</div>` : ''}
+    ${slide.tagline ? `<div class="tagline" data-field="tagline" data-max-lines="2" data-label="한 줄 설명" style="${fieldStyle(slide, 'tagline', 32)}">${renderMarkup(slide.tagline, palette)}</div>` : ''}
+    ${slide.body ? `<div class="body" data-field="body" data-max-lines="5" data-label="본문" style="${fieldStyle(slide, 'body', 29)}">${renderMarkup(slide.body, palette)}</div>` : ''}
   </div>
   ${stickers}
 <script>${slideRuntime()}</script>
