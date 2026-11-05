@@ -4,7 +4,8 @@
 // The per-slide 'overlay' layout instead puts the media full-bleed and overlays the text:
 // credit top-left, headline/comment on a bottom gradient (reference: biscit.co.kr feed).
 import { renderSticker, stickerCss } from '../stickers.mjs';
-import { slideRuntime, escapeHtml, mediaTag } from './runtime.mjs';
+import { slideRuntime, mediaTag } from './runtime.mjs';
+import { renderMarkup, brandPalette } from './markup.mjs';
 import { feedSizeFor } from './sizes.mjs';
 
 const REEL_SIZE = { width: 1080, height: 1920 };
@@ -66,8 +67,9 @@ export function renderSlide({ brand, post, slide, index, mediaSrc, mediaType, lo
   const bg = dark ? colors.ink : '#ffffff';
   const fg = dark ? '#ffffff' : colors.ink;
   const stickers = (slide.stickers ?? []).map((st) => renderSticker(st, brand)).join('');
+  const palette = brandPalette(brand);
   const field = (key, cls, max, label, text) =>
-    text ? `<div class="${cls}" data-field="${key}" data-max-lines="${max}" data-label="${label}">${escapeHtml(text)}</div>` : '';
+    text ? `<div class="${cls}" data-field="${key}" data-max-lines="${max}" data-label="${label}">${renderMarkup(text, palette)}</div>` : '';
 
   const onVideo = slide.layout === 'overlay';
   // Full-bleed layout letterboxes on black; the band layout keeps the theme color.
