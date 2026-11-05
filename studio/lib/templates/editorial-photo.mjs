@@ -3,7 +3,8 @@
 // 110px side margins, text block anchored ~210px above the bottom edge.
 // Runs identically in the editor preview (iframe) and the exporter (Playwright).
 import { renderSticker, stickerCss } from '../stickers.mjs';
-import { slideRuntime, escapeHtml, mediaTag } from './runtime.mjs';
+import { slideRuntime, mediaTag } from './runtime.mjs';
+import { renderMarkup, brandPalette } from './markup.mjs';
 import { feedSizeFor } from './sizes.mjs';
 
 const MARGIN_X = 110; // left/right margin, from the reference layout
@@ -59,11 +60,12 @@ export function renderSlide({ brand, post, slide, index, mediaSrc, mediaType, lo
   const showShade = shadeLevel > 0;
   const showShadow = slide.shadow !== 'off';
   const { fonts, colors } = brand;
+  const palette = brandPalette(brand);
   const stickers = (slide.stickers ?? []).map((st) => renderSticker(st, brand)).join('');
   // The tone probe sits on whatever occupies the top: logo first, else the source line.
   const source = slide.source
     ? `<div class="top source" ${showLogo ? '' : 'data-tone-probe '}data-avoid="top" data-field="source"
-        data-max-lines="1" data-label="출처">${escapeHtml(slide.source)}</div>`
+        data-max-lines="1" data-label="출처">${renderMarkup(slide.source, palette)}</div>`
     : '';
 
   return `<!doctype html>
@@ -130,8 +132,8 @@ export function renderSlide({ brand, post, slide, index, mediaSrc, mediaType, lo
   ${showLogo ? `<div class="top logo" data-tone-probe>${logoSvg}</div>` : ''}
   ${source}
   <div class="bottom" data-avoid="bottom">
-    <div class="headline" data-field="headline" data-max-lines="2" data-label="헤드라인">${escapeHtml(slide.headline ?? '')}</div>
-    ${slide.body ? `<div class="body" data-field="body" data-max-lines="2" data-label="본문">${escapeHtml(slide.body)}</div>` : ''}
+    <div class="headline" data-field="headline" data-max-lines="2" data-label="헤드라인">${renderMarkup(slide.headline ?? '', palette)}</div>
+    ${slide.body ? `<div class="body" data-field="body" data-max-lines="2" data-label="본문">${renderMarkup(slide.body, palette)}</div>` : ''}
   </div>
   ${stickers}
 <script>${slideRuntime({ toneThreshold: 0.62 })}</script>
