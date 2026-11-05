@@ -13,7 +13,8 @@ export const meta = {
   role: 'inner',
   formats: ['carousel', 'single'],
   mediaTypes: ['image'],
-  mediaOptional: true, // photo only shows when the 하단 사진 option is on
+  // Photo only participates (pin gate, export) when the 하단 사진 option is on.
+  usesMedia: (slide) => slide.photo === 'show',
   sizeFor: feedSizeFor,
   fields: [
     { key: 'no', label: '번호', hint: '예: 1 — 비우면 번호 없이 소제목만 나와요.' },
@@ -72,7 +73,7 @@ export function renderSlide({ brand, post, slide, mediaSrc, mediaType, mode = 'e
 </style></head>
 <body data-mode="${mode === 'preview' ? 'preview' : 'export'}">
   <div class="wrap">
-    <div class="head" style="${fieldStyle(slide, 'title', 44)}">${no ? `<span class="num" data-field="no" data-max-lines="1" data-label="번호">${renderMarkup(no, palette)}.</span>` : ''}<span data-field="title" data-max-lines="2" data-label="소제목">${renderMarkup(slide.title ?? '', palette)}</span></div>
+    <div class="head">${no ? `<span class="num" data-field="no" data-max-lines="1" data-label="번호" style="${fieldStyle(slide, 'no', 44)}">${renderMarkup(no, palette)}.</span>` : ''}<span data-field="title" data-max-lines="2" data-label="소제목" style="${fieldStyle(slide, 'title', 44)}">${renderMarkup(slide.title ?? '', palette)}</span></div>
     ${slide.body ? `<div class="body" data-field="body" data-max-lines="10" data-label="본문" style="${fieldStyle(slide, 'body', 32)}">${renderMarkup(slide.body, palette)}</div>` : ''}
     ${showPhoto ? `<div class="photo-box" data-media-box>${mediaTag({ src: mediaSrc, type: mediaType, mode, className: 'media' })}</div>` : ''}
   </div>

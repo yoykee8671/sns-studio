@@ -7,6 +7,7 @@ import { readFile, writeFile, mkdir, readdir, copyFile, rm, stat } from 'node:fs
 import path from 'node:path';
 import { STICKER_TYPES, normalizeSticker } from './stickers.mjs';
 import { resolveTemplate } from './templates/index.mjs';
+import { stripMarkup } from './templates/markup.mjs';
 import * as blob from './blob-store.mjs';
 
 export const { supabaseEnabled } = blob;
@@ -301,11 +302,6 @@ export async function purgeMedia(brandId, postId) {
   const post = await readPost(brandId, postId);
   const removed = [...new Set(post.slides.map((s) => s.media).filter(Boolean))]
     .map((m) => m.split('/').pop());
-  if (supabaseEnabled) {
-    await blob.deletePrefix(`${postKey(brandId, postId)}/media`);
-  } else {
-    await rm(path.join(postDir(brandId, postId), 'media'), { recursive: true, force: true });
-  }
   for (const s of post.slides) {
     if (s.media) {
       delete s.media;
@@ -315,7 +311,15 @@ export async function purgeMedia(brandId, postId) {
   }
   post.mediaPurged = true;
   post.purgedFiles = [...new Set([...(post.purgedFiles ?? []), ...removed])];
-  return savePost(brandId, postId, post);
+  // Save the stripped post first: if the storage delete fails midway the post never
+  // references half-deleted files, and re-running the purge cleans up the rest.
+  const saved = await savePost(brandId, postId, post);
+  if (supabaseEnabled) {
+    await blob.deletePrefix(`${postKey(brandId, postId)}/media`, { strict: true });
+  } else {
+    await rm(path.join(postDir(brandId, postId), 'media'), { recursive: true, force: true });
+  }
+  return saved;
 }
 
 /** Uploaded-media bytes per brand (Supabase list or local stat). */
@@ -355,6 +359,23 @@ const listDirNames = async (prefix) =>
     ? (await blob.listDir(prefix)).filter((e) => e.folder).map((e) => e.name)
     : readdir(prefix ? path.join(CONTENT_ROOT, prefix) : CONTENT_ROOT).catch(() => []);
 
+/** Display title: slide 1's headline, else its template's first filled text field. */
+function postTitle(post) {
+  const slide = post.slides[0];
+  if (!slide) return null;
+  let raw = slide.headline;
+  if (!raw) {
+    try {
+      const { meta } = resolveTemplate(post, slide);
+      raw = meta.fields.map((f) => slide[f.key]).find((v) => v && String(v).trim());
+    } catch {
+      raw = null;
+    }
+  }
+  const text = stripMarkup(raw ?? '').replace(/\n/g, ' ').trim();
+  return text || null;
+}
+
 export async function listPosts() {
   const out = [];
   for (const brandId of await listDirNames('')) {
@@ -369,7 +390,7 @@ export async function listPosts() {
           status: post.status,
           format: post.format,
           contentType: post.contentType,
-          title: post.slides[0]?.headline?.replace(/\n/g, ' ') ?? postId,
+          title: postTitle(post) ?? postId,
           slides: post.slides.length,
           series: post.series ?? null,
           updatedAt: post.updatedAt ?? null,
@@ -387,11 +408,12 @@ export async function imageStatus(brand, post) {
   return Promise.all(
     post.slides.map(async (slide) => {
       try {
-        // Text-only templates (and optional-photo templates without a photo) have no
+        // Text-only templates (and optional-photo templates with the photo off) have no
         // media to pin; 'none' passes the export gate instead of blocking as 'missing'.
+        // Purged posts also pass — they render the empty-photo placeholder by design.
         const t = resolveTemplate(post, slide).meta;
-        if (!t.mediaTypes.length) return { state: 'none' };
-        if (t.mediaOptional && !slide.media && !slide.image) return { state: 'none' };
+        if (!t.mediaTypes.length || t.usesMedia?.(slide) === false) return { state: 'none' };
+        if (post.mediaPurged && !slide.media && !slide.image) return { state: 'none' };
         if (slide.media && supabaseEnabled) {
           // Bucket uploads get unique names and are pinned at upload time, so a cheap
           // existence probe replaces re-hashing (videos would be costly to re-download).
