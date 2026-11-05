@@ -1,7 +1,7 @@
 // 속지: numbered tip/section page — accent "N." + bold section title, then a body
 // paragraph on plain paper. Inner-only (picked per slide); no cover variant.
 import { renderSticker, stickerCss } from '../stickers.mjs';
-import { slideRuntime, mediaTag } from './runtime.mjs';
+import { slideRuntime, mediaTag, fieldStyle } from './runtime.mjs';
 import { renderMarkup, brandPalette } from './markup.mjs';
 import { feedSizeFor } from './sizes.mjs';
 
@@ -72,8 +72,8 @@ export function renderSlide({ brand, post, slide, mediaSrc, mediaType, mode = 'e
 </style></head>
 <body data-mode="${mode === 'preview' ? 'preview' : 'export'}">
   <div class="wrap">
-    <div class="head">${no ? `<span class="num" data-field="no" data-max-lines="1" data-label="번호">${renderMarkup(no, palette)}.</span>` : ''}<span data-field="title" data-max-lines="2" data-label="소제목">${renderMarkup(slide.title ?? '', palette)}</span></div>
-    ${slide.body ? `<div class="body" data-field="body" data-max-lines="10" data-label="본문">${renderMarkup(slide.body, palette)}</div>` : ''}
+    <div class="head" style="${fieldStyle(slide, 'title', 44)}">${no ? `<span class="num" data-field="no" data-max-lines="1" data-label="번호">${renderMarkup(no, palette)}.</span>` : ''}<span data-field="title" data-max-lines="2" data-label="소제목">${renderMarkup(slide.title ?? '', palette)}</span></div>
+    ${slide.body ? `<div class="body" data-field="body" data-max-lines="10" data-label="본문" style="${fieldStyle(slide, 'body', 32)}">${renderMarkup(slide.body, palette)}</div>` : ''}
     ${showPhoto ? `<div class="photo-box" data-media-box>${mediaTag({ src: mediaSrc, type: mediaType, mode, className: 'media' })}</div>` : ''}
   </div>
   ${stickers}

@@ -699,6 +699,24 @@ export default function Editor({ brandId, postId }) {
                 />
               ))}
 
+              <details className="field">
+                <summary>글자 세부 조정 (자간·행간·크기)</summary>
+                <p className="note">템플릿 기본값에서 벗어나고 싶을 때만 써요. 내보내기에 그대로 반영돼요.</p>
+                {sMeta.fields.map((f) => (
+                  <TextStyleRow
+                    key={f.key}
+                    label={f.label}
+                    value={slide.textStyle?.[f.key]}
+                    onChange={(v) => {
+                      const next = { ...(slide.textStyle ?? {}) };
+                      if (v) next[f.key] = v;
+                      else delete next[f.key];
+                      updateSlide(sel, { textStyle: Object.keys(next).length ? next : undefined });
+                    }}
+                  />
+                ))}
+              </details>
+
               {(sMeta.sliders ?? []).map((s) => (
                 <div className="field" key={s.key}>
                   <label>
@@ -909,6 +927,45 @@ export default function Editor({ brandId, postId }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Per-field typography overrides (slide.textStyle[key]): size is a px delta from the
+// template base, ls/lh are absolute overrides. Unset values fall back to the template.
+function TextStyleRow({ label, value, onChange }) {
+  const v = value ?? {};
+  const set = (k, raw, unsetAt) => {
+    const next = { ...v };
+    if (raw === unsetAt) delete next[k];
+    else next[k] = raw;
+    onChange(Object.keys(next).length ? next : undefined);
+  };
+  const row = (name, k, min, max, step, unsetAt, fmt) => (
+    <div className="sticker-meta">
+      <span>{name}</span>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={v[k] ?? unsetAt}
+        onChange={(e) => set(k, +e.target.value, unsetAt)}
+      />
+      <span className="meter">{v[k] === undefined ? '기본' : fmt(v[k])}</span>
+    </div>
+  );
+  return (
+    <div className="text-style-row">
+      <label>
+        {label}
+        {value && (
+          <button className="link" onClick={() => onChange(undefined)}>초기화</button>
+        )}
+      </label>
+      {row('크기', 'size', -8, 8, 0.5, 0, (x) => `${x > 0 ? '+' : ''}${x}px`)}
+      {row('자간', 'ls', -0.1, 0.1, 0.005, -0.2, (x) => `${x}em`)}
+      {row('행간', 'lh', 1.1, 2, 0.05, 1, (x) => `${x}`)}
     </div>
   );
 }

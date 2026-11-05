@@ -208,6 +208,21 @@ export function slideRuntime({ toneThreshold = 0.62 } = {}) {
 })();`;
 }
 
+/**
+ * Per-field typography overrides from the editor's 글자 세부 조정 panel.
+ * slide.textStyle[key] = { size?: px delta from the template base, ls?: em, lh?: unitless }.
+ * Returns CSS text for a style attribute ('' when the field has no overrides).
+ */
+export function fieldStyle(slide, key, basePx) {
+  const s = slide?.textStyle?.[key];
+  if (!s) return '';
+  const parts = [];
+  if (s.size) parts.push(`font-size:${basePx + s.size}px`);
+  if (s.ls !== undefined) parts.push(`letter-spacing:${s.ls}em`);
+  if (s.lh !== undefined) parts.push(`line-height:${s.lh}`);
+  return parts.length ? `${parts.join(';')};` : '';
+}
+
 export const escapeHtml = (s = '') =>
   String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 

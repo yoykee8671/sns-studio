@@ -2,7 +2,7 @@
 // Each textarea line is one row; text before the first `|` becomes the label chip,
 // the rest the description. A line without `|` spans the full width.
 import { renderSticker, stickerCss } from '../stickers.mjs';
-import { slideRuntime } from './runtime.mjs';
+import { slideRuntime, fieldStyle } from './runtime.mjs';
 import { renderMarkup, brandPalette } from './markup.mjs';
 import { feedSizeFor } from './sizes.mjs';
 
@@ -69,7 +69,8 @@ export function renderSlide({ brand, post, slide, mode = 'export' }) {
     font-size: 44px; line-height: 1.3; letter-spacing: -0.02em; white-space: pre-wrap;
   }
   .intro { margin-top: 18px; font-size: 28px; line-height: 1.5; letter-spacing: -0.02em; opacity: .75; white-space: pre-wrap; }
-  .list { margin-top: 44px; display: flex; flex-direction: column; gap: 26px; }
+  .list { margin-top: 44px; display: flex; flex-direction: column; gap: 26px;
+    font-size: 30px; line-height: 1.5; letter-spacing: -0.02em; }
   .row { display: flex; align-items: flex-start; gap: 22px; }
   .gap { height: 6px; }
   .chip {
@@ -77,7 +78,7 @@ export function renderSlide({ brand, post, slide, mode = 'export' }) {
     border: 2px solid ${colors.ink ?? '#111'}; padding: 8px 18px;
     font-weight: 700; font-size: 26px; line-height: 1.35; letter-spacing: -0.01em;
   }
-  .desc { font-size: 30px; line-height: 1.5; letter-spacing: -0.02em; padding-top: 5px; white-space: pre-wrap; }
+  .desc { font-size: inherit; line-height: inherit; letter-spacing: inherit; padding-top: 5px; white-space: pre-wrap; }
   .desc.wide { padding-top: 0; }
   .desc b { color: ${accent}; }
   /* Invisible mirror of the raw items text so the QA runtime counts real lines. */
@@ -89,10 +90,10 @@ export function renderSlide({ brand, post, slide, mode = 'export' }) {
 </style></head>
 <body data-mode="${mode === 'preview' ? 'preview' : 'export'}">
   <div class="wrap">
-    <div class="title" data-field="title" data-max-lines="2" data-label="제목">${renderMarkup(slide.title ?? '', palette)}</div>
-    ${slide.intro ? `<div class="intro" data-field="intro" data-max-lines="2" data-label="한 줄 소개">${renderMarkup(slide.intro, palette)}</div>` : ''}
-    <div class="list">${rows}</div>
-    <div class="items-mirror" data-field="items" data-max-lines="10" data-label="항목">${renderMarkup(slide.items ?? '', palette)}</div>
+    <div class="title" data-field="title" data-max-lines="2" data-label="제목" style="${fieldStyle(slide, 'title', 44)}">${renderMarkup(slide.title ?? '', palette)}</div>
+    ${slide.intro ? `<div class="intro" data-field="intro" data-max-lines="2" data-label="한 줄 소개" style="${fieldStyle(slide, 'intro', 28)}">${renderMarkup(slide.intro, palette)}</div>` : ''}
+    <div class="list" style="${fieldStyle(slide, 'items', 30)}">${rows}</div>
+    <div class="items-mirror" data-field="items" data-max-lines="10" data-label="항목" style="${fieldStyle(slide, 'items', 30)}">${renderMarkup(slide.items ?? '', palette)}</div>
   </div>
   ${stickers}
 <script>${slideRuntime()}</script>
