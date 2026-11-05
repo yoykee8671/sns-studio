@@ -292,6 +292,64 @@ export async function deletePost(brandId, postId) {
   await rm(postDir(brandId, postId), { recursive: true, force: true });
 }
 
+/**
+ * Deletes a post's uploaded media to free storage (발행 끝난 게시물 정리). The post
+ * keeps rendering with media-missing placeholders; purged filenames stay on record.
+ * Brand-asset references (slide.image) are not uploads and are left alone. Idempotent.
+ */
+export async function purgeMedia(brandId, postId) {
+  const post = await readPost(brandId, postId);
+  const removed = [...new Set(post.slides.map((s) => s.media).filter(Boolean))]
+    .map((m) => m.split('/').pop());
+  if (supabaseEnabled) {
+    await blob.deletePrefix(`${postKey(brandId, postId)}/media`);
+  } else {
+    await rm(path.join(postDir(brandId, postId), 'media'), { recursive: true, force: true });
+  }
+  for (const s of post.slides) {
+    if (s.media) {
+      delete s.media;
+      delete s.mediaType;
+      delete s.imageSha256;
+    }
+  }
+  post.mediaPurged = true;
+  post.purgedFiles = [...new Set([...(post.purgedFiles ?? []), ...removed])];
+  return savePost(brandId, postId, post);
+}
+
+/** Uploaded-media bytes per brand (Supabase list or local stat). */
+export async function mediaUsage() {
+  const out = [];
+  for (const brandId of await listDirNames('')) {
+    if (!SAFE_ID.test(brandId)) continue;
+    let bytes = 0;
+    let files = 0;
+    for (const postId of await listDirNames(brandId)) {
+      if (!SAFE_ID.test(postId)) continue;
+      if (supabaseEnabled) {
+        for (const e of await blob.listDir(`${brandId}/${postId}/media`)) {
+          if (!e.folder) {
+            bytes += e.size ?? 0;
+            files += 1;
+          }
+        }
+      } else {
+        const dir = path.join(postDir(brandId, postId), 'media');
+        for (const f of await readdir(dir).catch(() => [])) {
+          const st = await stat(path.join(dir, f)).catch(() => null);
+          if (st?.isFile()) {
+            bytes += st.size;
+            files += 1;
+          }
+        }
+      }
+    }
+    out.push({ brand: brandId, bytes, files });
+  }
+  return out;
+}
+
 const listDirNames = async (prefix) =>
   supabaseEnabled
     ? (await blob.listDir(prefix)).filter((e) => e.folder).map((e) => e.name)

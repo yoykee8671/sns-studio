@@ -113,5 +113,5 @@ export async function listDir(prefix) {
   });
   if (!res.ok) return [];
   const rows = await res.json();
-  return rows.map((r) => ({ name: r.name, folder: r.id == null }));
+  return rows.map((r) => ({ name: r.name, folder: r.id == null, size: r.metadata?.size ?? 0 }));
 }
