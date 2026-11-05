@@ -101,7 +101,7 @@ export function renderSlide({ brand, post, slide, index, mediaSrc, mediaType, lo
   .logo svg { display: block; width: 300px; height: auto; }
   .source {
     left: ${MARGIN_X}px; max-width: calc(100% - ${MARGIN_X * 2}px);
-    font-size: 19px; letter-spacing: -0.005em; white-space: pre-wrap;
+    font-size: 20.5px; letter-spacing: -0.005em; white-space: pre-wrap;
     opacity: .9; ${showShadow ? 'text-shadow: 0 1px 6px rgba(0,0,0,.45);' : ''}
   }
   body[data-top-tone='dark'] .source { text-shadow: none; }
@@ -112,13 +112,13 @@ export function renderSlide({ brand, post, slide, index, mediaSrc, mediaType, lo
   }
   .headline {
     font-family: '${fonts.headline}'; font-weight: 700;
-    font-size: ${isCover ? 80 : 34}px; line-height: ${isCover ? 1.2 : 1.35};
+    font-size: ${isCover ? 80 : 36}px; line-height: ${isCover ? 1.2 : 1.35};
     letter-spacing: ${isCover ? '-0.03em' : '-0.02em'}; white-space: pre-wrap;
     ${showShadow ? 'text-shadow: 0 2px 12px rgba(0,0,0,.35), 0 1px 4px rgba(0,0,0,.25);' : ''}
   }
   .body {
     margin-top: ${isCover ? 26 : 18}px;
-    font-weight: 400; font-size: 30px; line-height: 1.5; letter-spacing: -0.02em;
+    font-weight: 400; font-size: 32px; line-height: 1.5; letter-spacing: -0.02em;
     white-space: pre-wrap; opacity: .92;
     ${showShadow ? 'text-shadow: 0 1px 8px rgba(0,0,0,.35);' : ''}
   }
