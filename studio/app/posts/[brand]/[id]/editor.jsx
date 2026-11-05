@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { getTemplate } from '@/lib/templates/index.mjs';
+import { getTemplate, resolveTemplate, TEMPLATES } from '@/lib/templates/index.mjs';
 import { RATIOS } from '@/lib/templates/sizes.mjs';
 import { STICKER_TYPES, createSticker, resolveColor } from '@/lib/stickers.mjs';
 
@@ -194,7 +194,7 @@ export default function Editor({ brandId, postId }) {
   const slideHtml = useCallback(
     (p, i, mode) => {
       const { src, type } = mediaOf(brandId, postId, p.slides[i]);
-      return template.renderSlide({
+      return resolveTemplate(p, p.slides[i]).renderSlide({
         brand: ctx.brand,
         post: p,
         slide: p.slides[i],
@@ -205,7 +205,7 @@ export default function Editor({ brandId, postId }) {
         mode,
       });
     },
-    [template, ctx, brandId, postId],
+    [ctx, brandId, postId],
   );
   const onClosing = post && closingUrl && sel >= post.slides.length;
   const mainHtml = useMemo(
@@ -423,7 +423,14 @@ export default function Editor({ brandId, postId }) {
 
   const maxSlides = closingUrl ? 9 : 10; // Instagram carousels take 10 items incl. the closing slide
   const addSlide = () => {
-    update((p) => p.slides.push(template.meta.newSlide(p)));
+    // New slides inherit the previous slide's template so a chosen inner layout continues.
+    update((p) => {
+      const prev = p.slides[p.slides.length - 1];
+      const t = resolveTemplate(p, prev);
+      const s = t.meta.newSlide(p);
+      if (prev?.template) s.template = prev.template;
+      p.slides.push(s);
+    });
     setImages((im) => [...im, { state: 'missing' }]);
     setSel(post.slides.length);
   };
@@ -452,6 +459,16 @@ export default function Editor({ brandId, postId }) {
 
   const { meta } = template;
   const slide = onClosing ? null : post.slides[Math.min(sel, post.slides.length - 1)];
+  // Panel fields/options follow the slide's own template; crumb and format switching stay post-level.
+  const sMeta = (slide ? resolveTemplate(post, slide) : template).meta;
+  // Template choices for this slide: compatible with the post format, grouped by role
+  // (cover/any first on slide 1, inner/any first elsewhere) — grouping only, nothing hidden.
+  const templateChoices = Object.entries(TEMPLATES)
+    .filter(([, t]) => t.meta.formats.includes(post.format))
+    .sort(([, a], [, b]) => {
+      const rank = (r) => (sel === 0 ? { cover: 0, any: 1, inner: 2 } : { inner: 0, any: 1, cover: 2 })[r] ?? 1;
+      return rank(a.meta.role) - rank(b.meta.role);
+    });
   const report = reports[sel];
   const allIssues = Object.entries(reports).flatMap(([i, r]) => r.issues.map((t) => `${+i + 1}장: ${t}`));
   const hashtags = post.hashtags ?? [];
@@ -625,10 +642,32 @@ export default function Editor({ brandId, postId }) {
                 <button className="danger" onClick={() => removeSlide(sel)} disabled={post.slides.length === 1}>이 장 삭제</button>
               </div>
 
+              {templateChoices.length > 1 && (
+                <div className="field">
+                  <label>이 장의 템플릿</label>
+                  <select
+                    value={slide.template ?? post.template}
+                    onChange={(e) =>
+                      updateSlide(sel, {
+                        template: e.target.value === post.template ? undefined : e.target.value,
+                      })
+                    }
+                  >
+                    {templateChoices.map(([key, t]) => (
+                      <option key={key} value={key}>
+                        {t.meta.label}
+                        {key === post.template ? ' · 기본' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="note">장마다 다른 템플릿을 쓸 수 있어요. 표지는 1장에 어울리는 템플릿을 골라주세요.</p>
+                </div>
+              )}
+
               <MediaRow
                 slide={slide}
                 status={images[sel]}
-                accept={meta.mediaTypes.includes('video') ? 'image/*,video/*' : 'image/*'}
+                accept={sMeta.mediaTypes.includes('video') ? 'image/*,video/*' : 'image/*'}
                 busy={busy === 'upload'}
                 onUpload={upload}
                 onPin={() => updateSlide(sel, { imageSha256: images[sel].sha })}
@@ -644,7 +683,7 @@ export default function Editor({ brandId, postId }) {
                 </p>
               </div>
 
-              {meta.fields.map((f) => (
+              {sMeta.fields.map((f) => (
                 <LinesField
                   key={f.key}
                   label={f.label}
@@ -657,7 +696,7 @@ export default function Editor({ brandId, postId }) {
                 />
               ))}
 
-              {(meta.sliders ?? []).map((s) => (
+              {(sMeta.sliders ?? []).map((s) => (
                 <div className="field" key={s.key}>
                   <label>
                     {s.label}
@@ -676,7 +715,7 @@ export default function Editor({ brandId, postId }) {
                 </div>
               ))}
 
-              {meta.options
+              {sMeta.options
                 .filter((o) => (!o.coverOnly || sel === 0) && !o.hidden?.(slide))
                 .map((o) => (
                   <div className="field" key={o.key}>

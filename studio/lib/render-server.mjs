@@ -10,7 +10,7 @@ import ffmpegPath from 'ffmpeg-static';
 import { chromium } from 'playwright-core';
 import { ROOT, loadBrand, loadLogoSvg, imageStatus, materializeMedia, mediaTypeOf, closingImage, resolveAsset } from './store.mjs';
 import { exportSlideSvg } from './svg-export.mjs';
-import { getTemplate } from './templates/index.mjs';
+import { getTemplate, resolveTemplate } from './templates/index.mjs';
 
 const run = promisify(execFile);
 const MIME = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp' };
@@ -106,7 +106,7 @@ async function launchBrowser() {
  */
 export async function renderPost(post, { format, quality = 92, allowChanged = false, only = null }) {
   const brand = await loadBrand(post.brand);
-  const { renderSlide, meta } = getTemplate(post.template);
+  const { meta } = getTemplate(post.template);
   const size = meta.sizeFor(post);
   const logoSvg = await loadLogoSvg(brand);
 
@@ -124,6 +124,7 @@ export async function renderPost(post, { format, quality = 92, allowChanged = fa
     const reports = [];
     for (const [i, slide] of post.slides.entries()) {
       if (only && !only.includes(i)) continue;
+      const { renderSlide } = resolveTemplate(post, slide);
       const name = String(i + 1).padStart(2, '0');
       const file = await materializeMedia(brand, post, slide, tmp);
       const isVideo = mediaTypeOf(slide) === 'video';
