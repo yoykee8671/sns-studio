@@ -7,7 +7,9 @@ import { escapeHtml } from './runtime.mjs';
 
 const BOLD = /\*\*([^*\n]+)\*\*/g;
 const MARK = /==([^=\n]+)==/g;
-const COLOR = /\{\{([^|{}\n]+)\|([^{}\n]+?)\}\}/g;
+// Color text may not contain other markers or tags produced by earlier replacements —
+// overlapping ranges would otherwise mis-nest the generated HTML.
+const COLOR = /\{\{([^|{}\n]+)\|([^{}\n*=<>]+?)\}\}/g;
 // Values interpolated into style="" must be plain CSS colors, nothing else.
 const SAFE_CSS_COLOR = /^[#a-zA-Z0-9(),.% -]+$/;
 

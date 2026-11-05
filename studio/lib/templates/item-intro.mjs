@@ -86,7 +86,7 @@ export function renderSlide({ brand, post, slide, mediaSrc, mediaType, mode = 'e
 <body data-mode="${mode === 'preview' ? 'preview' : 'export'}">
   <div class="wrap">
     <div class="head">
-      ${no ? `<span class="num" data-field="no" data-max-lines="1" data-label="번호">${renderMarkup(no, palette)}.</span>` : ''}
+      ${no ? `<span class="num" data-field="no" data-max-lines="1" data-label="번호" style="${fieldStyle(slide, 'no', 38)}">${renderMarkup(no, palette)}.</span>` : ''}
       <span data-field="name" data-max-lines="2" data-label="아이템 이름" style="${fieldStyle(slide, 'name', 46)}">${renderMarkup(slide.name ?? '', palette)}</span>
     </div>
     <div class="photo-box" data-media-box>${mediaTag({ src: mediaSrc, type: mediaType, mode, className: 'media' })}</div>

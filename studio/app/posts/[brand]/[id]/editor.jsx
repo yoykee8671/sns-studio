@@ -480,14 +480,14 @@ export default function Editor({ brandId, postId }) {
   const maxSlides = closingUrl ? 9 : 10; // Instagram carousels take 10 items incl. the closing slide
   const addSlide = () => {
     // New slides inherit the previous slide's template so a chosen inner layout continues.
+    const prevSlide = post.slides[post.slides.length - 1];
+    const tMeta = resolveTemplate(post, prevSlide).meta;
     update((p) => {
-      const prev = p.slides[p.slides.length - 1];
-      const t = resolveTemplate(p, prev);
-      const s = t.meta.newSlide(p);
-      if (prev?.template) s.template = prev.template;
+      const s = tMeta.newSlide(p);
+      if (prevSlide?.template) s.template = prevSlide.template;
       p.slides.push(s);
     });
-    setImages((im) => [...im, { state: 'missing' }]);
+    setImages((im) => [...im, { state: tMeta.mediaTypes.length ? 'missing' : 'none' }]);
     setSel(post.slides.length);
   };
   const removeSlide = (i) => {
@@ -531,7 +531,9 @@ export default function Editor({ brandId, postId }) {
   const isCuration = post.contentType === 'curation';
   const blocked = isCuration && post.source?.permission !== 'granted';
   const thumbScale = THUMB_W / size.width;
-  const title = post.slides[0].headline?.replace(/\n/g, ' ') || post.source?.handle && `@${post.source.handle} 소개` || post.id;
+  const title =
+    (post.slides[0].headline || post.slides[0].title || post.slides[0].name || '').replace(/\n/g, ' ') ||
+    (post.source?.handle && `@${post.source.handle} 소개`) || post.id;
 
   return (
     <div className="editor">
@@ -746,14 +748,17 @@ export default function Editor({ brandId, postId }) {
                 />
               )}
 
-              <div className="field suggest-row">
-                <button onClick={suggest} disabled={!!busy}>
-                  {busy === 'suggest' ? '문구 만드는 중…' : '✨ 문구 추천'}
-                </button>
-                <p className="note">
-                  사진·영상에 어울리는 헤드라인·코멘트 초안을 만들어요. 다시 누르면 다른 문구가 나와요.
-                </p>
-              </div>
+              {/* Drafts write to headline/body, so only templates with those fields get it. */}
+              {sMeta.fields.some((f) => f.key === 'headline') && (
+                <div className="field suggest-row">
+                  <button onClick={suggest} disabled={!!busy}>
+                    {busy === 'suggest' ? '문구 만드는 중…' : '✨ 문구 추천'}
+                  </button>
+                  <p className="note">
+                    사진·영상에 어울리는 헤드라인·코멘트 초안을 만들어요. 다시 누르면 다른 문구가 나와요.
+                  </p>
+                </div>
+              )}
 
               {sMeta.fields.map((f) => (
                 <LinesField
@@ -1091,8 +1096,8 @@ function TextStyleRow({ label, value, onChange }) {
         )}
       </label>
       {row('크기', 'size', -8, 8, 0.5, 0, (x) => `${x > 0 ? '+' : ''}${x}px`)}
-      {row('자간', 'ls', -0.1, 0.1, 0.005, -0.2, (x) => `${x}em`)}
-      {row('행간', 'lh', 1.1, 2, 0.05, 1, (x) => `${x}`)}
+      {row('자간', 'ls', -0.1, 0.1, 0.005, -0.02, (x) => `${x}em`)}
+      {row('행간', 'lh', 1.1, 2, 0.05, 1.5, (x) => `${x}`)}
     </div>
   );
 }

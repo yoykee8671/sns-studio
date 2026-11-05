@@ -14,7 +14,12 @@ export async function POST(req, { params }) {
       { status: 412 },
     );
   }
-  const { post } = await req.json();
+  let post;
+  try {
+    ({ post } = await req.json());
+  } catch {
+    return Response.json({ error: 'invalid JSON body' }, { status: 400 });
+  }
   if (post?.brand !== brandId || post?.id !== id) {
     return Response.json({ error: 'brand/id mismatch' }, { status: 400 });
   }

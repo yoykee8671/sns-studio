@@ -124,14 +124,20 @@ export async function renderPost(post, { format, quality = 92, allowChanged = fa
     const reports = [];
     for (const [i, slide] of post.slides.entries()) {
       if (only && !only.includes(i)) continue;
-      const { renderSlide } = resolveTemplate(post, slide);
+      const { renderSlide, meta: tMeta } = resolveTemplate(post, slide);
       const name = String(i + 1).padStart(2, '0');
-      const file = await materializeMedia(brand, post, slide, tmp);
-      const isVideo = mediaTypeOf(slide) === 'video';
+      // A slide's media only participates when its template actually shows it —
+      // stale media fields left over from a template switch must not drive the
+      // video-composite path (templates without [data-media-box] would crash it).
+      const usesMedia = tMeta.mediaTypes.length > 0 && tMeta.usesMedia?.(slide) !== false;
+      const file = usesMedia ? await materializeMedia(brand, post, slide, tmp) : null;
+      const isVideoFile = Boolean(file) && mediaTypeOf(slide) === 'video';
+      const isVideo = isVideoFile && tMeta.mediaTypes.includes('video');
       const base = { brand, post, slide, index: i, logoSvg };
 
-      // Image slides (and the still/SVG version of video slides) render the photo or first frame.
-      const still = isVideo ? await posterFrame(file, tmp) : file;
+      // Image slides (and the still/SVG version of video slides) render the photo or
+      // first frame. Image-only templates render a video's first frame as the photo.
+      const still = isVideoFile ? await posterFrame(file, tmp) : file;
       const stillSrc = still ? await dataUrl(still) : null;
       await page.setContent(renderSlide({ ...base, mediaSrc: stillSrc, mediaType: 'image', mode: 'export' }), {
         waitUntil: 'load',

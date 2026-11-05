@@ -216,10 +216,19 @@ export function slideRuntime({ toneThreshold = 0.62 } = {}) {
 export function fieldStyle(slide, key, basePx) {
   const s = slide?.textStyle?.[key];
   if (!s) return '';
+  // Values land inside a style="" attribute: coerce to finite numbers and clamp,
+  // so stored JSON can never break out of the attribute or blow up the layout.
+  const num = (v, min, max) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : null;
+  };
   const parts = [];
-  if (s.size) parts.push(`font-size:${basePx + s.size}px`);
-  if (s.ls !== undefined) parts.push(`letter-spacing:${s.ls}em`);
-  if (s.lh !== undefined) parts.push(`line-height:${s.lh}`);
+  const size = num(s.size, -12, 12);
+  if (size) parts.push(`font-size:${basePx + size}px`);
+  const ls = s.ls !== undefined ? num(s.ls, -0.3, 0.3) : null;
+  if (ls !== null) parts.push(`letter-spacing:${ls}em`);
+  const lh = s.lh !== undefined ? num(s.lh, 0.8, 3) : null;
+  if (lh !== null) parts.push(`line-height:${lh}`);
   return parts.length ? `${parts.join(';')};` : '';
 }
 

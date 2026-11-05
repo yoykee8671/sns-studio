@@ -45,3 +45,8 @@ test('stripMarkup removes markers, keeps text', () => {
 test('plain text without markers is just escaped', () => {
   assert.equal(renderMarkup('라벨 | 설명', palette), '라벨 | 설명');
 });
+
+test('overlapping markers cannot produce mis-nested tags', () => {
+  // color text may not contain other markers, so this stays a plain bold match
+  assert.equal(renderMarkup('**a{{red|b**}}', palette), '<b>a{{red|b</b>}}');
+});

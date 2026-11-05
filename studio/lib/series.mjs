@@ -2,7 +2,7 @@
 // new post from the latest issue's template composition (layout kept, content blank).
 // Stored per brand at content/<brand>/series.json (same key in Supabase mode).
 // Issue numbers are bookkeeping only — they never appear on the cards (user decision).
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, copyFile } from 'node:fs/promises';
 import path from 'node:path';
 import {
   supabaseEnabled, readPost, createPost, postDir,
@@ -15,25 +15,37 @@ const seriesFile = (brandId) => path.join(path.dirname(postDir(brandId, 'x')), '
 
 export async function loadSeries(brandId) {
   if (!SAFE_ID.test(brandId)) throw new Error(`invalid brand: ${brandId}`);
-  try {
-    const raw = supabaseEnabled
-      ? (await blob.getBytes(seriesKey(brandId)))?.toString('utf8')
-      : await readFile(seriesFile(brandId), 'utf8');
-    if (!raw) return { series: [] };
-    const parsed = JSON.parse(raw);
-    return { series: parsed.series ?? [] };
-  } catch {
-    return { series: [] };
+  // Only a genuinely absent file means "no series yet". A read error or corrupted
+  // JSON must throw — returning [] here would let the next save wipe every series.
+  let raw;
+  if (supabaseEnabled) {
+    raw = (await blob.getBytes(seriesKey(brandId)))?.toString('utf8') ?? null;
+  } else {
+    try {
+      raw = await readFile(seriesFile(brandId), 'utf8');
+    } catch (e) {
+      if (e.code !== 'ENOENT') throw e;
+      raw = null;
+    }
   }
+  if (!raw) return { series: [] };
+  const parsed = JSON.parse(raw);
+  return { series: parsed.series ?? [] };
 }
 
 async function saveSeries(brandId, data) {
   const body = `${JSON.stringify(data, null, 2)}\n`;
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   if (supabaseEnabled) {
+    await blob.copyObject(seriesKey(brandId), `${brandId}/.series-history/${stamp}.json`)
+      .catch(() => {}); // first save has nothing to back up
     await blob.putObject(seriesKey(brandId), body, 'application/json');
     return;
   }
-  await mkdir(path.dirname(seriesFile(brandId)), { recursive: true });
+  const dir = path.dirname(seriesFile(brandId));
+  await mkdir(path.join(dir, '.series-history'), { recursive: true });
+  await copyFile(seriesFile(brandId), path.join(dir, '.series-history', `${stamp}.json`))
+    .catch(() => {});
   await writeFile(seriesFile(brandId), body);
 }
 
@@ -97,7 +109,8 @@ export async function nextIssue(brandId, seriesId) {
   });
 
   const no = s.nextNo;
-  const slug = `${s.title}-${String(no).padStart(3, '0')}`;
+  // Slug from the series id — Korean titles would slugify to nothing and collide.
+  const slug = `${s.id}-${String(no).padStart(3, '0')}`;
   const post = await createPost({
     brand: brandId,
     slug,

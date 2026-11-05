@@ -26,3 +26,14 @@ test('zero letter-spacing is still emitted (0 is a valid value)', () => {
 test('other fields are untouched', () => {
   assert.equal(fieldStyle({ textStyle: { body: { size: 4 } } }, 'headline', 36), '');
 });
+
+test('non-numeric values cannot break out of the style attribute', () => {
+  const evil = { textStyle: { t: { ls: '0"><img src=x onerror=alert(1)>', lh: 'red;}', size: 'x' } } };
+  assert.equal(fieldStyle(evil, 't', 30), '');
+});
+
+test('numeric strings coerce and out-of-range values clamp', () => {
+  assert.equal(fieldStyle({ textStyle: { t: { size: '5' } } }, 't', 30), 'font-size:35px;');
+  assert.equal(fieldStyle({ textStyle: { t: { size: 400 } } }, 't', 30), 'font-size:42px;');
+  assert.equal(fieldStyle({ textStyle: { t: { lh: 99 } } }, 't', 30), 'line-height:3;');
+});
