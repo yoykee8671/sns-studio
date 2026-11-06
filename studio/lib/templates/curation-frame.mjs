@@ -7,6 +7,7 @@ import { renderSticker, stickerCss } from '../stickers.mjs';
 import { slideRuntime, mediaTag, fieldStyle } from './runtime.mjs';
 import { renderMarkup, brandPalette } from './markup.mjs';
 import { feedSizeFor } from './sizes.mjs';
+import { webFontCss } from './fonts.mjs';
 
 const REEL_SIZE = { width: 1080, height: 1920 };
 
@@ -51,6 +52,7 @@ export const meta = {
     credit: post?.source?.handle ? `📷 @${post.source.handle}` : '',
     stickers: [],
   }),
+  sample: { headline: '이 계정의 산책 영상,\n저장 각입니다', body: '원본 위에 우리 코멘트가 붙는 디깅형이에요.', credit: '📷 @creator_handle' },
 };
 
 /**
@@ -108,6 +110,7 @@ export function renderSlide({ brand, post, slide, index, mediaSrc, mediaType, lo
   return `<!doctype html>
 <html lang="ko"><head><meta charset="utf-8">
 <style>
+  ${webFontCss()}
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { width: ${W}px; height: ${H}px; overflow: hidden; background: ${mode === 'overlay' ? 'transparent' : baseColor}; }
   body {

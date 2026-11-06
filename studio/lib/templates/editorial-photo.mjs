@@ -6,6 +6,7 @@ import { renderSticker, stickerCss } from '../stickers.mjs';
 import { slideRuntime, mediaTag, fieldStyle } from './runtime.mjs';
 import { renderMarkup, brandPalette } from './markup.mjs';
 import { feedSizeFor } from './sizes.mjs';
+import { webFontCss } from './fonts.mjs';
 
 const MARGIN_X = 110; // left/right margin, from the reference layout
 const MARGIN_BOTTOM = 210; // headline block bottom offset
@@ -36,6 +37,7 @@ export const meta = {
     { key: 'shadeLevel', label: '그라데이션 음영', min: 0, max: 100, step: 5, default: 100, unit: '%' },
   ],
   newSlide: () => ({ headline: '', body: '', source: '', stickers: [] }),
+  sample: { headline: '주말에 가볼 만한\n단풍 산책길', body: '사진 위에 제목과 코멘트가 올라가는 기본형이에요.', source: '' },
 };
 
 /**
@@ -72,6 +74,7 @@ export function renderSlide({ brand, post, slide, index, mediaSrc, mediaType, lo
   return `<!doctype html>
 <html lang="ko"><head><meta charset="utf-8">
 <style>
+  ${webFontCss()}
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { width: ${W}px; height: ${H}px; overflow: hidden; background: #000; }
   body {

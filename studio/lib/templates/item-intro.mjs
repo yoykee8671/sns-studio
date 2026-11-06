@@ -4,6 +4,7 @@ import { renderSticker, stickerCss } from '../stickers.mjs';
 import { slideRuntime, mediaTag, fieldStyle } from './runtime.mjs';
 import { renderMarkup, brandPalette } from './markup.mjs';
 import { feedSizeFor } from './sizes.mjs';
+import { webFontCss } from './fonts.mjs';
 
 const MARGIN_X = 110;
 
@@ -29,6 +30,7 @@ export const meta = {
     body: '',
     stickers: [],
   }),
+  sample: { no: '1', name: '아이템 이름', tagline: '한 줄 소개가 들어가는 자리', body: '사진과 함께 아이템을 소개하는 양식이에요.' },
 };
 
 export function renderSlide({ brand, post, slide, mediaSrc, mediaType, mode = 'export' }) {
@@ -44,6 +46,7 @@ export function renderSlide({ brand, post, slide, mediaSrc, mediaType, mode = 'e
   return `<!doctype html>
 <html lang="ko"><head><meta charset="utf-8">
 <style>
+  ${webFontCss()}
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { width: ${W}px; height: ${H}px; overflow: hidden; background: ${colors.paper ?? '#ffffff'}; }
   body {

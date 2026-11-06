@@ -1,8 +1,10 @@
 import Link from 'next/link';
-import { listPosts, listBrands, mediaUsage } from '@/lib/store.mjs';
+import { listPosts, listBrands, mediaUsage, loadBrand } from '@/lib/store.mjs';
 import { loadSeries } from '@/lib/series.mjs';
+import { suggestReady } from '@/lib/suggest.mjs';
 import NewPost from './new-post';
 import SeriesSection from './series-section';
+import BrandStyleSection from './brand-style-section';
 import DeletePostButton from './delete-post-button';
 
 export const dynamic = 'force-dynamic';
@@ -23,6 +25,22 @@ export default async function Home() {
       series: (await loadSeries(b.id)).series,
     })),
   );
+  const styleData = await Promise.all(
+    brands.map(async (b) => {
+      const full = await loadBrand(b.id); // colors/fonts already merged with overrides
+      return {
+        brand: b.id,
+        handle: b.handle ?? `@${b.id}`,
+        effective: {
+          point: full.colors.blue,
+          highlight: full.colors.lime,
+          headline: full.fonts.headline,
+          body: full.fonts.body,
+        },
+        overrides: full.style ?? {},
+      };
+    }),
+  );
   return (
     <main className="home">
       <header className="home-head">
@@ -36,9 +54,10 @@ export default async function Home() {
             <span className="note"> — 발행 끝난 게시물은 에디터에서 &lsquo;발행됨 + 미디어 정리&rsquo;로 비울 수 있어요.</span>
           </p>
         )}
-        <NewPost brands={brands} />
+        <NewPost brands={brands} aiReady={suggestReady()} />
       </header>
       <SeriesSection data={seriesData} posts={posts} />
+      <BrandStyleSection data={styleData} />
       <ul className="post-list">
         {posts.map((p) => (
           <li key={`${p.brand}/${p.id}`} className="post-item">

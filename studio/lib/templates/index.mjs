@@ -4,6 +4,18 @@ import * as curationFrame from './curation-frame.mjs';
 import * as numberedSection from './numbered-section.mjs';
 import * as infoList from './info-list.mjs';
 import * as itemIntro from './item-intro.mjs';
+import * as coverBook from './cover-book.mjs';
+import * as coverPhotoFull from './cover-photo-full.mjs';
+import * as coverCenterDark from './cover-center-dark.mjs';
+import * as coverMinimal from './cover-minimal.mjs';
+import * as innerEssay from './inner-essay.mjs';
+import * as innerInterview from './inner-interview.mjs';
+import * as innerNumberedDark from './inner-numbered-dark.mjs';
+import * as innerItemDark from './inner-item-dark.mjs';
+import * as innerPhotoSplit from './inner-photo-split.mjs';
+import * as quoteDark from './quote-dark.mjs';
+import * as quoteSerif from './quote-serif.mjs';
+import * as lastFollow from './last-follow.mjs';
 
 export const TEMPLATES = {
   'editorial-photo': editorialPhoto,
@@ -11,7 +23,22 @@ export const TEMPLATES = {
   'numbered-section': numberedSection,
   'info-list': infoList,
   'item-intro': itemIntro,
+  'cover-book': coverBook,
+  'cover-photo-full': coverPhotoFull,
+  'cover-center-dark': coverCenterDark,
+  'cover-minimal': coverMinimal,
+  'inner-essay': innerEssay,
+  'inner-interview': innerInterview,
+  'inner-numbered-dark': innerNumberedDark,
+  'inner-item-dark': innerItemDark,
+  'inner-photo-split': innerPhotoSplit,
+  'quote-dark': quoteDark,
+  'quote-serif': quoteSerif,
+  'last-follow': lastFollow,
 };
+
+// Gallery grouping/order: cover → any → inner → last.
+export const ROLE_ORDER = ['cover', 'any', 'inner', 'last'];
 
 export function getTemplate(name) {
   const t = TEMPLATES[name];

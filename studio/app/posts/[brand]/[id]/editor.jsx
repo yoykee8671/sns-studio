@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { getTemplate, resolveTemplate, TEMPLATES } from '@/lib/templates/index.mjs';
 import { RATIOS } from '@/lib/templates/sizes.mjs';
 import { STICKER_TYPES, createSticker, resolveColor } from '@/lib/stickers.mjs';
+import TemplateGallery from './template-gallery';
 
 const CAPTION_LIMIT = 2200;
 const HASHTAG_LIMIT = 30;
@@ -100,6 +101,7 @@ export default function Editor({ brandId, postId }) {
   const [tab, setTab] = useState('slide');
   const [format, setFormat] = useState('png');
   const [capDraft, setCapDraft] = useState(null); // { detailed, short, hashtags, view }
+  const [gallery, setGallery] = useState(null); // null | 'switch' (현재 장) | 'add' (새 장)
   const [loadError, setLoadError] = useState(null);
 
   const mainFrame = useRef(null);
@@ -442,16 +444,19 @@ export default function Editor({ brandId, postId }) {
   };
 
   const maxSlides = closingUrl ? 9 : 10; // Instagram carousels take 10 items incl. the closing slide
-  const addSlide = () => {
-    // New slides inherit the previous slide's template so a chosen inner layout continues.
+  // templateKey undefined = inherit the previous slide's template so a chosen layout continues.
+  const addSlide = (templateKey) => {
     const prevSlide = post.slides[post.slides.length - 1];
-    const tMeta = resolveTemplate(post, prevSlide).meta;
+    const picked = templateKey ? TEMPLATES[templateKey] : resolveTemplate(post, prevSlide);
+    const tMeta = picked.meta;
     update((p) => {
       const s = tMeta.newSlide(p);
-      if (prevSlide?.template) s.template = prevSlide.template;
+      const key = templateKey ?? prevSlide?.template;
+      if (key && key !== p.template) s.template = key;
+      else delete s.template;
       p.slides.push(s);
     });
-    setImages((im) => [...im, { state: tMeta.mediaTypes.length ? 'missing' : 'none' }]);
+    setImages((im) => [...im, { state: tMeta.mediaTypes.length && tMeta.usesMedia?.(tMeta.newSlide(post)) !== false ? 'missing' : 'none' }]);
     setSel(post.slides.length);
   };
   const removeSlide = (i) => {
@@ -600,7 +605,7 @@ export default function Editor({ brandId, postId }) {
             </button>
           )}
           {post.format !== 'reel' && post.format !== 'single' && post.slides.length < maxSlides && (
-            <button className="add-slide" onClick={addSlide}>+ 장 추가</button>
+            <button className="add-slide" onClick={() => setGallery('add')}>+ 장 추가</button>
           )}
         </nav>
 
@@ -681,21 +686,10 @@ export default function Editor({ brandId, postId }) {
               {templateChoices.length > 1 && (
                 <div className="field">
                   <label>이 장의 템플릿</label>
-                  <select
-                    value={slide.template ?? post.template}
-                    onChange={(e) =>
-                      updateSlide(sel, {
-                        template: e.target.value === post.template ? undefined : e.target.value,
-                      })
-                    }
-                  >
-                    {templateChoices.map(([key, t]) => (
-                      <option key={key} value={key}>
-                        {t.meta.label}
-                        {key === post.template ? ' · 기본' : ''}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="slide-tools">
+                    <span className="badge">{sMeta.label}</span>
+                    <button onClick={() => setGallery('switch')}>템플릿 바꾸기…</button>
+                  </div>
                   <p className="note">장마다 다른 템플릿을 쓸 수 있어요. 표지는 1장에 어울리는 템플릿을 골라주세요.</p>
                 </div>
               )}
@@ -904,6 +898,27 @@ export default function Editor({ brandId, postId }) {
       </div>
 
       {toast && <div className={`toast toast-${toast.kind}`}>{toast.text}</div>}
+
+      {gallery && (
+        <TemplateGallery
+          post={post}
+          brand={ctx.brand}
+          logoSvg={ctx.logoSvg}
+          current={gallery === 'switch' ? (slide?.template ?? post.template) : undefined}
+          title={gallery === 'switch' ? `${sel + 1}장의 템플릿 고르기` : '새 장의 템플릿 고르기'}
+          quickLabel={gallery === 'add' ? '직전 장과 같게 추가' : undefined}
+          onQuick={() => {
+            addSlide();
+            setGallery(null);
+          }}
+          onPick={(key) => {
+            if (gallery === 'switch') updateSlide(sel, { template: key === post.template ? undefined : key });
+            else addSlide(key);
+            setGallery(null);
+          }}
+          onClose={() => setGallery(null)}
+        />
+      )}
 
       {modal && (
         <div className="modal-back" onClick={() => setModal(null)}>

@@ -8,6 +8,7 @@ import path from 'node:path';
 import { STICKER_TYPES, normalizeSticker } from './stickers.mjs';
 import { resolveTemplate } from './templates/index.mjs';
 import { stripMarkup } from './templates/markup.mjs';
+import { isFontChoice } from './templates/fonts.mjs';
 import * as blob from './blob-store.mjs';
 
 export const { supabaseEnabled } = blob;
@@ -35,7 +36,64 @@ const assertId = (id) => {
 export async function loadBrand(brandId) {
   assertId(brandId);
   const brand = JSON.parse(await readFile(path.join(ROOT, 'brands', `${brandId}.json`), 'utf8'));
-  return { ...brand, assetPath: path.resolve(ROOT, brand.assetDir) };
+  // 매거진 스타일: user-set point color / highlight / fonts override the brand JSON,
+  // so every template picks them up without knowing the feature exists.
+  const style = await readBrandStyle(brandId);
+  const colors = { ...brand.colors };
+  if (style.colors?.point) colors.blue = style.colors.point;
+  if (style.colors?.highlight) colors.lime = style.colors.highlight;
+  const fonts = { ...brand.fonts };
+  if (style.fonts?.headline) fonts.headline = style.fonts.headline;
+  if (style.fonts?.body) fonts.body = style.fonts.body;
+  return { ...brand, colors, fonts, style, assetPath: path.resolve(ROOT, brand.assetDir) };
+}
+
+// ---- 매거진 스타일 (brand-wide style overrides, stored with the content) ----
+
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+
+/** Keeps only valid keys/values; unknown fonts and non-hex colors are dropped. */
+export function normalizeBrandStyle(input, { isFont = isFontChoice } = {}) {
+  const out = {};
+  const colors = {};
+  if (HEX_COLOR.test(input?.colors?.point ?? '')) colors.point = input.colors.point;
+  if (HEX_COLOR.test(input?.colors?.highlight ?? '')) colors.highlight = input.colors.highlight;
+  if (Object.keys(colors).length) out.colors = colors;
+  const fonts = {};
+  if (isFont(input?.fonts?.headline)) fonts.headline = input.fonts.headline;
+  if (isFont(input?.fonts?.body)) fonts.body = input.fonts.body;
+  if (Object.keys(fonts).length) out.fonts = fonts;
+  return out;
+}
+
+const brandStyleKey = (brandId) => `${brandId}/brand-style.json`;
+
+/** Missing file = no overrides ({}); any other read error propagates (same rule as series). */
+export async function readBrandStyle(brandId) {
+  assertId(brandId);
+  if (supabaseEnabled) {
+    const data = await blob.getBytes(brandStyleKey(brandId));
+    return data ? JSON.parse(data.toString('utf8')) : {};
+  }
+  try {
+    return JSON.parse(await readFile(path.join(CONTENT_ROOT, brandId, 'brand-style.json'), 'utf8'));
+  } catch (e) {
+    if (e.code === 'ENOENT') return {};
+    throw e;
+  }
+}
+
+export async function saveBrandStyle(brandId, style) {
+  assertId(brandId);
+  const body = `${JSON.stringify(style, null, 2)}\n`;
+  if (supabaseEnabled) {
+    await blob.putObject(brandStyleKey(brandId), body, 'application/json');
+    return style;
+  }
+  const dir = path.join(CONTENT_ROOT, brandId);
+  await mkdir(dir, { recursive: true });
+  await writeFile(path.join(dir, 'brand-style.json'), body);
+  return style;
 }
 
 const escapeXml = (s) =>

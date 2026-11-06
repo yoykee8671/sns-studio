@@ -96,6 +96,14 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1
 .series-new { display: flex; gap: 8px; margin-top: 10px; }
 .series-new .text-input { flex: 1; }
 
+/* 내 매거진 스타일 */
+.style-grid { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.style-field { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--muted); }
+.style-field input[type='color'] {
+  width: 36px; height: 28px; padding: 0; border: 1px solid var(--line); border-radius: 6px;
+  background: none; cursor: pointer;
+}
+
 /* Editor layout */
 .editor { display: grid; grid-template-rows: 64px auto 1fr; height: 100vh; }
 .topbar {
@@ -257,6 +265,36 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1
 .modal ol, .modal ul { padding-left: 20px; line-height: 1.7; }
 .modal .missing code { background: #f1efe9; padding: 1px 6px; border-radius: 4px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+
+/* 템플릿 갤러리 */
+.tg-modal { width: min(960px, calc(100vw - 32px)); max-height: 86dvh; display: flex; flex-direction: column; }
+.tg-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.tg-head h2 { margin: 0; }
+.tg-head-actions { display: flex; gap: 8px; }
+.tg-body { overflow-y: auto; margin-top: 8px; padding-right: 4px; }
+.tg-body section h3 { margin: 18px 0 10px; font-size: 13px; color: var(--muted); letter-spacing: .04em; }
+.tg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; }
+.tg-card {
+  display: grid; gap: 8px; justify-items: start; padding: 0; border: none; background: none; cursor: pointer;
+}
+.tg-frame {
+  display: block; position: relative; overflow: hidden; border-radius: 10px;
+  border: 2px solid var(--line); background: #fff;
+}
+.tg-card.on .tg-frame, .tg-card:hover .tg-frame { border-color: var(--accent, #3b63bc); }
+.tg-frame iframe { border: 0; transform-origin: top left; pointer-events: none; display: block; }
+.tg-label { font-size: 13px; color: var(--ink); }
+
+/* 추천 조합 세트 카드 */
+.set-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.set-card {
+  display: grid; gap: 4px; text-align: left; padding: 12px 14px; cursor: pointer;
+  border: 2px solid var(--line); border-radius: 10px; background: var(--surface);
+}
+.set-card.on { border-color: var(--accent, #3b63bc); }
+.set-card small { font-weight: 400; color: var(--muted); margin-left: 4px; }
+.set-card span { font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+.text-input.manuscript { width: 100%; resize: vertical; line-height: 1.6; }
 
 /* 디깅형 additions */
 .banner {
