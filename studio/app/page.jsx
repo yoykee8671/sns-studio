@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { listPosts, listBrands, mediaUsage, loadBrand } from '@/lib/store.mjs';
 import { loadSeries } from '@/lib/series.mjs';
+import { suggestReady } from '@/lib/suggest.mjs';
 import NewPost from './new-post';
 import SeriesSection from './series-section';
 import BrandStyleSection from './brand-style-section';
@@ -53,7 +54,7 @@ export default async function Home() {
             <span className="note"> — 발행 끝난 게시물은 에디터에서 &lsquo;발행됨 + 미디어 정리&rsquo;로 비울 수 있어요.</span>
           </p>
         )}
-        <NewPost brands={brands} />
+        <NewPost brands={brands} aiReady={suggestReady()} />
       </header>
       <SeriesSection data={seriesData} posts={posts} />
       <BrandStyleSection data={styleData} />
