@@ -32,6 +32,7 @@ export const meta = {
     body: '',
     stickers: [],
   }),
+  sample: { no: '1', title: '번호와 소제목을 넣는 자리', body: '이 부분에는 소제목에 대한 설명을 적습니다. 번호를 매긴 팁이나 방법을 하나씩 소개할 때 쓰는 양식입니다.' },
 };
 
 export function renderSlide({ brand, post, slide, mediaSrc, mediaType, mode = 'export' }) {

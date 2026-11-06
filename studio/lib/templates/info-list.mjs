@@ -27,6 +27,7 @@ export const meta = {
   ],
   options: [],
   newSlide: () => ({ template: 'info-list', title: '', intro: '', items: '', stickers: [] }),
+  sample: { title: '한눈에 보는 정보표', intro: '라벨과 설명을 줄마다 적으면 표처럼 정리돼요.', items: '장소 | 서울숲 은행나무길\n시간 | 오전 10시~12시가 한적해요\n준비물 | 리드줄, 물, 배변봉투' },
 };
 
 export function renderSlide({ brand, post, slide, mode = 'export' }) {

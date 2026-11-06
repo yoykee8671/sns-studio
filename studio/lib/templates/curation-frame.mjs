@@ -52,6 +52,7 @@ export const meta = {
     credit: post?.source?.handle ? `📷 @${post.source.handle}` : '',
     stickers: [],
   }),
+  sample: { headline: '이 계정의 산책 영상,\n저장 각입니다', body: '원본 위에 우리 코멘트가 붙는 디깅형이에요.', credit: '📷 @creator_handle' },
 };
 
 /**

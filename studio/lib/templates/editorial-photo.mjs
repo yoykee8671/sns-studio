@@ -37,6 +37,7 @@ export const meta = {
     { key: 'shadeLevel', label: '그라데이션 음영', min: 0, max: 100, step: 5, default: 100, unit: '%' },
   ],
   newSlide: () => ({ headline: '', body: '', source: '', stickers: [] }),
+  sample: { headline: '주말에 가볼 만한\n단풍 산책길', body: '사진 위에 제목과 코멘트가 올라가는 기본형이에요.', source: '' },
 };
 
 /**

@@ -30,6 +30,7 @@ export const meta = {
     body: '',
     stickers: [],
   }),
+  sample: { no: '1', name: '아이템 이름', tagline: '한 줄 소개가 들어가는 자리', body: '사진과 함께 아이템을 소개하는 양식이에요.' },
 };
 
 export function renderSlide({ brand, post, slide, mediaSrc, mediaType, mode = 'export' }) {
