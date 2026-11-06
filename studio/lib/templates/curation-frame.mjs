@@ -76,8 +76,12 @@ export function renderSlide({ brand, post, slide, index, mediaSrc, mediaType, lo
   // Full-bleed layout letterboxes on black; the band layout keeps the theme color.
   const baseColor = onVideo ? '#000000' : bg;
 
+  // v2: the first slide is a real cover — its headline matches the 지식형 cover (80px
+  // on feed, scaled up on reels); inner slides keep the original 46/58px.
+  const headlinePx = isCover ? (isReel ? 96 : 80) : (isReel ? 58 : 46);
+  const ovHeadlinePx = isCover ? (isReel ? 88 : 80) : (isReel ? 54 : 46);
   const band = `<div class="band">
-      ${field('headline', 'headline', 2, '헤드라인', slide.headline, isReel ? 58 : 46)}
+      ${field('headline', 'headline', 2, '헤드라인', slide.headline, headlinePx)}
       ${field('body', 'body', 2, '코멘트', slide.body, isReel ? 34 : 32)}
       <div class="foot">
         ${field('credit', 'credit', 1, '출처 표기', slide.credit, isReel ? 27.5 : 23.5) || '<span></span>'}
@@ -97,7 +101,7 @@ export function renderSlide({ brand, post, slide, index, mediaSrc, mediaType, lo
     ${showOvCredit ? field('credit', 'ov-credit', 1, '출처 표기', slide.credit, 20.5) : ''}
     ${showOvLogo ? `<div class="ov-logo">${logoSvg}</div>` : ''}
     <div class="ov-bottom" data-avoid="bottom">
-      ${field('headline', 'ov-headline', 2, '헤드라인', slide.headline, isReel ? 54 : 46)}
+      ${field('headline', 'ov-headline', 2, '헤드라인', slide.headline, ovHeadlinePx)}
       ${field('body', 'ov-body', 4, '코멘트', slide.body, 32)}
     </div>`;
 
@@ -121,7 +125,8 @@ export function renderSlide({ brand, post, slide, index, mediaSrc, mediaType, lo
   .band { flex: none; padding: ${isReel ? '190px 72px 56px' : '40px 64px 46px'}; }
   .headline {
     font-family: '${fonts.headline}'; font-weight: 700;
-    font-size: ${isReel ? 58 : 46}px; line-height: 1.3; letter-spacing: -0.03em; white-space: pre;
+    font-size: ${headlinePx}px; line-height: ${isCover ? 1.22 : 1.3};
+    letter-spacing: -0.03em; white-space: pre;
   }
   .body {
     margin-top: 14px; font-size: ${isReel ? 34 : 32}px; line-height: 1.5; letter-spacing: -0.02em;
@@ -153,7 +158,8 @@ export function renderSlide({ brand, post, slide, index, mediaSrc, mediaType, lo
   }
   .ov-headline {
     font-family: '${fonts.headline}'; font-weight: 700;
-    font-size: ${isReel ? 54 : 46}px; line-height: 1.3; letter-spacing: -0.03em; white-space: pre;
+    font-size: ${ovHeadlinePx}px; line-height: ${isCover ? 1.22 : 1.3};
+    letter-spacing: -0.03em; white-space: pre;
     text-shadow: 0 2px 12px rgba(0,0,0,.35), 0 1px 4px rgba(0,0,0,.25);
   }
   .ov-body {
