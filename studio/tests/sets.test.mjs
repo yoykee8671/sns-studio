@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { SETS, getSet, setSlides } from '../lib/templates/sets.mjs';
+import { SETS, getSet, setSlides, renumberSlides } from '../lib/templates/sets.mjs';
 import { TEMPLATES } from '../lib/templates/index.mjs';
+import { webFontCss } from '../lib/templates/fonts.mjs';
 
 test('every set references registered carousel templates, cover first and last-role last', () => {
   for (const s of SETS) {
@@ -23,4 +24,23 @@ test('setSlides attaches template keys and numbers inner pages from 1', () => {
   slides.forEach((s, i) => assert.equal(s.template, set.slides[i]));
   const numbered = slides.filter((s) => s.template === 'inner-numbered-dark');
   assert.deepEqual(numbered.map((s) => s.no), ['1', '2', '3', '4']);
+});
+
+test('renumberSlides fixes slide-index numbering from the manuscript path', () => {
+  // newSlide defaults derive from the slide index: cover eats "1", inners start at "2".
+  const slides = [
+    { template: 'cover-center-dark' },
+    { template: 'inner-numbered-dark', no: '2' },
+    { template: 'inner-numbered-dark', no: '3' },
+    { template: 'inner-item-dark', no: '04' },
+    { template: 'last-follow' },
+  ];
+  renumberSlides(slides);
+  assert.deepEqual(slides.map((s) => s.no), [undefined, '1', '2', '01', undefined]);
+});
+
+test('webFontCss emits only the families a template asks for', () => {
+  assert.equal(webFontCss(['Pretendard', 'Freesentation']), '');
+  assert.match(webFontCss(['Pretendard', 'NanumMyeongjo']), /NanumMyeongjo-Regular\.ttf/);
+  assert.equal((webFontCss(['NanumMyeongjo']).match(/@font-face/g) ?? []).length, 3);
 });

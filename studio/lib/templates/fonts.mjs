@@ -17,9 +17,18 @@ export const FONT_CHOICES = [
 
 export const isFontChoice = (v) => FONT_CHOICES.some((f) => f.value === v);
 
-/** @font-face CSS every template includes; browsers only fetch families actually used. */
-export const webFontCss = () =>
-  WEB_FONTS.map(
-    (f) =>
-      `@font-face { font-family: '${f.family}'; src: url('/fonts/${f.file}') format('truetype'); font-weight: ${f.weight}; font-display: block; }`,
-  ).join('\n  ');
+/**
+ * @font-face CSS for the families a slide actually uses. Templates pass the font
+ * names they render with; families that aren't bundled web fonts filter out, so a
+ * Pretendard-only slide emits nothing — that keeps the export path from inlining
+ * megabytes of unused base64 (render-server only inlines fonts the HTML references).
+ */
+export const webFontCss = (families = WEB_FONTS.map((f) => f.family)) => {
+  const used = new Set(families);
+  return WEB_FONTS.filter((f) => used.has(f.family))
+    .map(
+      (f) =>
+        `@font-face { font-family: '${f.family}'; src: url('/fonts/${f.file}') format('truetype'); font-weight: ${f.weight}; font-display: block; }`,
+    )
+    .join('\n  ');
+};

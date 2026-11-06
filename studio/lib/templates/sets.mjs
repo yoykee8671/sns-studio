@@ -38,22 +38,27 @@ export const SETS = [
 export const getSet = (id) => SETS.find((s) => s.id === id) ?? null;
 
 /**
- * Builds the set's slides for a new post; every slide carries its template key.
  * Numbered templates ('no' field) count from 1 among their own kind, not from the
- * slide index — the cover doesn't consume a number.
+ * slide index — the cover doesn't consume a number. Mutates and returns `slides`;
+ * each slide must already carry its template key.
  */
+export function renumberSlides(slides) {
+  const counts = {};
+  for (const slide of slides) {
+    const meta = TEMPLATES[slide.template]?.meta;
+    if (!meta?.fields.some((f) => f.key === 'no')) continue;
+    counts[slide.template] = (counts[slide.template] ?? 0) + 1;
+    const pad = (slide.no ?? '').length > 1 ? 2 : 1;
+    slide.no = String(counts[slide.template]).padStart(pad, '0');
+  }
+  return slides;
+}
+
+/** Builds the set's slides for a new post; every slide carries its template key. */
 export function setSlides(set, post) {
   const draft = { ...post, slides: [] };
-  const counts = {};
   for (const key of set.slides) {
-    const meta = TEMPLATES[key].meta;
-    const slide = { ...meta.newSlide(draft), template: key };
-    if (meta.fields.some((f) => f.key === 'no')) {
-      counts[key] = (counts[key] ?? 0) + 1;
-      const pad = (slide.no ?? '').length > 1 ? 2 : 1;
-      slide.no = String(counts[key]).padStart(pad, '0');
-    }
-    draft.slides.push(slide);
+    draft.slides.push({ ...TEMPLATES[key].meta.newSlide(draft), template: key });
   }
-  return draft.slides;
+  return renumberSlides(draft.slides);
 }

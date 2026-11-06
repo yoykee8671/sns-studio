@@ -1,8 +1,12 @@
 import { createPost, loadBrand } from '@/lib/store.mjs';
 import { TEMPLATES } from '@/lib/templates/index.mjs';
-import { getSet } from '@/lib/templates/sets.mjs';
+import { getSet, renumberSlides } from '@/lib/templates/sets.mjs';
 import { DEFAULT_RATIO, isRatio } from '@/lib/templates/sizes.mjs';
 import { suggestReady, draftFromManuscript } from '@/lib/suggest.mjs';
+
+export const maxDuration = 60;
+
+const MANUSCRIPT_MAX = 20000;
 
 // 원고로 시작하기: { brand, text, set, ratio?, slug? } → AI가 원고를 세트의
 // 템플릿 장들로 나눠 담은 초안 게시물을 만든다.
@@ -20,6 +24,9 @@ export async function POST(req) {
   if (!text?.trim() || text.trim().length < 80) {
     return Response.json({ error: '원고가 너무 짧아요. 몇 문단은 있어야 카드로 나눌 수 있어요.' }, { status: 400 });
   }
+  if (text.trim().length > MANUSCRIPT_MAX) {
+    return Response.json({ error: `원고가 너무 길어요. ${MANUSCRIPT_MAX.toLocaleString()}자 이내로 줄여주세요.` }, { status: 400 });
+  }
   if (ratio !== undefined && !isRatio(ratio)) return Response.json({ error: 'unknown ratio' }, { status: 400 });
 
   try {
@@ -35,6 +42,9 @@ export async function POST(req) {
       draftPost.slides.push(slide);
       return slide;
     });
+    // 'no' fields number from 1 among their own kind (the AI tends to leave them,
+    // and newSlide's slide-index default would make the first inner "2").
+    renumberSlides(slides);
     const post = await createPost({
       brand: brandId,
       slug: slug || 'manuscript',

@@ -68,19 +68,36 @@ export function normalizeBrandStyle(input, { isFont = isFontChoice } = {}) {
 
 const brandStyleKey = (brandId) => `${brandId}/brand-style.json`;
 
-/** Missing file = no overrides ({}); any other read error propagates (same rule as series). */
+// loadBrand runs on every asset/preview request; a short-lived cache keeps the style
+// read from adding a storage round-trip (Supabase) per request. saveBrandStyle invalidates.
+const styleCache = new Map(); // brandId -> { style, at }
+const STYLE_TTL_MS = 5000;
+
+/**
+ * Missing file = no overrides ({}). A corrupted file also degrades to {} (with a
+ * warning) instead of throwing: style is cosmetic, and throwing here would take
+ * down every page of the brand — including the home page where you'd fix it.
+ * Values are re-normalized on read so only whitelisted colors/fonts reach CSS.
+ */
 export async function readBrandStyle(brandId) {
   assertId(brandId);
-  if (supabaseEnabled) {
-    const data = await blob.getBytes(brandStyleKey(brandId));
-    return data ? JSON.parse(data.toString('utf8')) : {};
-  }
+  const hit = styleCache.get(brandId);
+  if (hit && Date.now() - hit.at < STYLE_TTL_MS) return hit.style;
+  let style = {};
   try {
-    return JSON.parse(await readFile(path.join(CONTENT_ROOT, brandId, 'brand-style.json'), 'utf8'));
+    if (supabaseEnabled) {
+      const data = await blob.getBytes(brandStyleKey(brandId));
+      style = data ? normalizeBrandStyle(JSON.parse(data.toString('utf8'))) : {};
+    } else {
+      const raw = await readFile(path.join(CONTENT_ROOT, brandId, 'brand-style.json'), 'utf8');
+      style = normalizeBrandStyle(JSON.parse(raw));
+    }
   } catch (e) {
-    if (e.code === 'ENOENT') return {};
-    throw e;
+    if (e.code !== 'ENOENT') console.warn(`brand-style ${brandId}: ${e.message} — ignoring overrides`);
+    style = {};
   }
+  styleCache.set(brandId, { style, at: Date.now() });
+  return style;
 }
 
 export async function saveBrandStyle(brandId, style) {
@@ -88,11 +105,12 @@ export async function saveBrandStyle(brandId, style) {
   const body = `${JSON.stringify(style, null, 2)}\n`;
   if (supabaseEnabled) {
     await blob.putObject(brandStyleKey(brandId), body, 'application/json');
-    return style;
+  } else {
+    const dir = path.join(CONTENT_ROOT, brandId);
+    await mkdir(dir, { recursive: true });
+    await writeFile(path.join(dir, 'brand-style.json'), body);
   }
-  const dir = path.join(CONTENT_ROOT, brandId);
-  await mkdir(dir, { recursive: true });
-  await writeFile(path.join(dir, 'brand-style.json'), body);
+  styleCache.set(brandId, { style, at: Date.now() });
   return style;
 }
 
