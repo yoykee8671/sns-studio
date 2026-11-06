@@ -155,9 +155,10 @@ export default function NewPost({ brands, aiReady = false }) {
           <textarea
             className="text-input manuscript"
             rows={8}
+            maxLength={20000}
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder="여기에 쓴 글을 붙여 넣으세요. 메모, 블로그, 캡션 무엇이든 괜찮아요."
+            placeholder="여기에 쓴 글을 붙여 넣으세요. 메모, 블로그, 캡션 무엇이든 괜찮아요. (최대 2만 자)"
           />
         </div>
       )}

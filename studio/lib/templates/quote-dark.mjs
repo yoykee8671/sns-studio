@@ -38,7 +38,7 @@ export function renderSlide({ brand, post, slide, mode = 'export' }) {
   return `<!doctype html>
 <html lang="ko"><head><meta charset="utf-8">
 <style>
-  ${webFontCss()}
+  ${webFontCss([fonts.headline, fonts.body, ...(serif ? ['NanumMyeongjo'] : [])])}
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { width: ${W}px; height: ${H}px; overflow: hidden; background: #0c0c0c; }
   body {

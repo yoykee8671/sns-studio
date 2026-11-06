@@ -110,7 +110,7 @@ export function renderSlide({ brand, post, slide, index, mediaSrc, mediaType, lo
   return `<!doctype html>
 <html lang="ko"><head><meta charset="utf-8">
 <style>
-  ${webFontCss()}
+  ${webFontCss([fonts.headline, fonts.body])}
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { width: ${W}px; height: ${H}px; overflow: hidden; background: ${mode === 'overlay' ? 'transparent' : baseColor}; }
   body {

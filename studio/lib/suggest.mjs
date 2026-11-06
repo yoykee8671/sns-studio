@@ -68,6 +68,9 @@ export async function suggestCaption({ brand, post, series = null }) {
   return response.parsed_output;
 }
 
+// No .max() on the array: structured outputs can't always carry maxItems, and a
+// model that writes one slide too many would fail the whole parse — the API route
+// slices to 9 instead.
 const ManuscriptDraft = z.object({
   slides: z
     .array(
@@ -76,8 +79,7 @@ const ManuscriptDraft = z.object({
         fields: z.array(z.object({ key: z.string(), text: z.string() })),
       }),
     )
-    .min(2)
-    .max(9),
+    .min(2),
 });
 
 /**

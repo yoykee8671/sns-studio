@@ -82,7 +82,7 @@ export default function BrandStyleSection({ data }) {
                       <span>{label}</span>
                       <input
                         type="color"
-                        value={t[key] ?? effective[key]}
+                        value={/^#[0-9a-fA-F]{6}$/.test(t[key] ?? effective[key] ?? '') ? (t[key] ?? effective[key]) : '#000000'}
                         onChange={(e) => set(brand, key, e.target.value)}
                       />
                       {t[key] && (
