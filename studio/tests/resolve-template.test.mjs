@@ -24,6 +24,6 @@ test('reel-incompatible slide.template falls back to post.template', () => {
 
 test('every template declares a role', () => {
   for (const [name, t] of Object.entries(TEMPLATES)) {
-    assert.ok(['cover', 'inner', 'any'].includes(t.meta.role), `${name} missing role`);
+    assert.ok(['cover', 'inner', 'any', 'last'].includes(t.meta.role), `${name} missing role`);
   }
 });
