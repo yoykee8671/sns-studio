@@ -96,6 +96,14 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1
 .series-new { display: flex; gap: 8px; margin-top: 10px; }
 .series-new .text-input { flex: 1; }
 
+/* 내 매거진 스타일 */
+.style-grid { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.style-field { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--muted); }
+.style-field input[type='color'] {
+  width: 36px; height: 28px; padding: 0; border: 1px solid var(--line); border-radius: 6px;
+  background: none; cursor: pointer;
+}
+
 /* Editor layout */
 .editor { display: grid; grid-template-rows: 64px auto 1fr; height: 100vh; }
 .topbar {

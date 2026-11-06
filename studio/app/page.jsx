@@ -1,8 +1,9 @@
 import Link from 'next/link';
-import { listPosts, listBrands, mediaUsage } from '@/lib/store.mjs';
+import { listPosts, listBrands, mediaUsage, loadBrand } from '@/lib/store.mjs';
 import { loadSeries } from '@/lib/series.mjs';
 import NewPost from './new-post';
 import SeriesSection from './series-section';
+import BrandStyleSection from './brand-style-section';
 import DeletePostButton from './delete-post-button';
 
 export const dynamic = 'force-dynamic';
@@ -23,6 +24,22 @@ export default async function Home() {
       series: (await loadSeries(b.id)).series,
     })),
   );
+  const styleData = await Promise.all(
+    brands.map(async (b) => {
+      const full = await loadBrand(b.id); // colors/fonts already merged with overrides
+      return {
+        brand: b.id,
+        handle: b.handle ?? `@${b.id}`,
+        effective: {
+          point: full.colors.blue,
+          highlight: full.colors.lime,
+          headline: full.fonts.headline,
+          body: full.fonts.body,
+        },
+        overrides: full.style ?? {},
+      };
+    }),
+  );
   return (
     <main className="home">
       <header className="home-head">
@@ -39,6 +56,7 @@ export default async function Home() {
         <NewPost brands={brands} />
       </header>
       <SeriesSection data={seriesData} posts={posts} />
+      <BrandStyleSection data={styleData} />
       <ul className="post-list">
         {posts.map((p) => (
           <li key={`${p.brand}/${p.id}`} className="post-item">

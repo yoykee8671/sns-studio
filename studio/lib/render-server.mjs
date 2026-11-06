@@ -11,6 +11,7 @@ import { chromium } from 'playwright-core';
 import { ROOT, loadBrand, loadLogoSvg, imageStatus, materializeMedia, mediaTypeOf, closingImage, resolveAsset } from './store.mjs';
 import { exportSlideSvg } from './svg-export.mjs';
 import { getTemplate, resolveTemplate } from './templates/index.mjs';
+import { WEB_FONTS } from './templates/fonts.mjs';
 
 const run = promisify(execFile);
 const MIME = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp' };
@@ -19,6 +20,23 @@ export class ImageChangedError extends Error {}
 
 const dataUrl = async (file, mime) =>
   `data:${mime ?? MIME[path.extname(file).toLowerCase()]};base64,${(await readFile(file)).toString('base64')}`;
+
+// setContent() documents have no base URL, so the /fonts/<file> URLs that work in the
+// srcDoc previews resolve to nothing at export time. Swap them for data URLs instead
+// (only for fonts the slide actually references; base64 is cached per process).
+const fontDataUrls = new Map();
+async function inlineWebFonts(html) {
+  for (const f of WEB_FONTS) {
+    const url = `/fonts/${f.file}`;
+    if (!html.includes(url)) continue;
+    if (!fontDataUrls.has(f.file)) {
+      const bytes = await readFile(path.resolve(ROOT, '../deploy/fonts', f.file));
+      fontDataUrls.set(f.file, `data:font/ttf;base64,${bytes.toString('base64')}`);
+    }
+    html = html.replaceAll(url, fontDataUrls.get(f.file));
+  }
+  return html;
+}
 
 async function posterFrame(video, dir) {
   const out = path.join(dir, `poster-${path.basename(video)}.jpg`);
@@ -139,7 +157,7 @@ export async function renderPost(post, { format, quality = 92, allowChanged = fa
       // first frame. Image-only templates render a video's first frame as the photo.
       const still = isVideoFile ? await posterFrame(file, tmp) : file;
       const stillSrc = still ? await dataUrl(still) : null;
-      await page.setContent(renderSlide({ ...base, mediaSrc: stillSrc, mediaType: 'image', mode: 'export' }), {
+      await page.setContent(await inlineWebFonts(renderSlide({ ...base, mediaSrc: stillSrc, mediaType: 'image', mode: 'export' })), {
         waitUntil: 'load',
       });
       reports.push(await page.evaluate(() => window.__ready));
@@ -156,7 +174,7 @@ export async function renderPost(post, { format, quality = 92, allowChanged = fa
       }
 
       // Video: transparent overlay + measured media box → ffmpeg composite.
-      await page.setContent(renderSlide({ ...base, mediaSrc: stillSrc, mediaType: 'image', mode: 'overlay' }), {
+      await page.setContent(await inlineWebFonts(renderSlide({ ...base, mediaSrc: stillSrc, mediaType: 'image', mode: 'overlay' })), {
         waitUntil: 'load',
       });
       await page.evaluate(() => window.__ready);
