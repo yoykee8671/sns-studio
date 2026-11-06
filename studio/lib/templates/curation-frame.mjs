@@ -118,7 +118,8 @@ export function renderSlide({ brand, post, slide, index, mediaSrc, mediaType, lo
   .band { flex: none; padding: ${isReel ? '190px 72px 56px' : '40px 64px 46px'}; }
   .headline {
     font-family: '${fonts.headline}'; font-weight: 700;
-    font-size: ${isReel ? 58 : 46}px; line-height: 1.3; letter-spacing: -0.03em; white-space: pre;
+    font-size: ${isCover ? (isReel ? 96 : 80) : (isReel ? 58 : 46)}px;
+    line-height: ${isCover ? 1.22 : 1.3}; letter-spacing: -0.03em; white-space: pre;
   }
   .body {
     margin-top: 14px; font-size: ${isReel ? 34 : 32}px; line-height: 1.5; letter-spacing: -0.02em;
@@ -150,7 +151,8 @@ export function renderSlide({ brand, post, slide, index, mediaSrc, mediaType, lo
   }
   .ov-headline {
     font-family: '${fonts.headline}'; font-weight: 700;
-    font-size: ${isReel ? 54 : 46}px; line-height: 1.3; letter-spacing: -0.03em; white-space: pre;
+    font-size: ${isCover ? (isReel ? 88 : 80) : (isReel ? 54 : 46)}px;
+    line-height: ${isCover ? 1.22 : 1.3}; letter-spacing: -0.03em; white-space: pre;
     text-shadow: 0 2px 12px rgba(0,0,0,.35), 0 1px 4px rgba(0,0,0,.25);
   }
   .ov-body {
