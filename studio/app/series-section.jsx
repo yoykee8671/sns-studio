@@ -9,9 +9,10 @@ import { useRouter } from 'next/navigation';
  * @param {{ data: { brand: string, handle: string, series: object[] }[],
  *           posts: { brand: string, id: string, title: string, series?: object }[] }} props
  */
-export default function SeriesSection({ data, posts }) {
+export default function SeriesSection({ data, posts, embedded = false }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [openState, setOpen] = useState(false);
+  const open = embedded || openState;
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
   const [titles, setTitles] = useState({}); // per-brand new series title
@@ -72,9 +73,11 @@ export default function SeriesSection({ data, posts }) {
 
   return (
     <section className="series">
+      {!embedded && (
       <button className="series-toggle" onClick={() => setOpen(!open)}>
-        연재 관리 {total > 0 && `(${total})`} {open ? '▴' : '▾'}
-      </button>
+          즐겨찾기 {total > 0 && `(${total})`} {open ? '▴' : '▾'}
+        </button>
+      )}
       {open && (
         <div className="series-body">
           {error && <p className="form-error">{error}</p>}

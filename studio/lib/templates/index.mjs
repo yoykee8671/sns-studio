@@ -16,8 +16,9 @@ import * as innerPhotoSplit from './inner-photo-split.mjs';
 import * as quoteDark from './quote-dark.mjs';
 import * as quoteSerif from './quote-serif.mjs';
 import * as lastFollow from './last-follow.mjs';
+import { withSource } from './source-tag.mjs';
 
-export const TEMPLATES = {
+const MODULES = {
   'editorial-photo': editorialPhoto,
   'curation-frame': curationFrame,
   'numbered-section': numberedSection,
@@ -36,6 +37,11 @@ export const TEMPLATES = {
   'quote-serif': quoteSerif,
   'last-follow': lastFollow,
 };
+
+// Every template gets the shared 출처 field + show/hide/position options (source-tag.mjs).
+export const TEMPLATES = Object.fromEntries(
+  Object.entries(MODULES).map(([key, mod]) => [key, withSource(key, mod)]),
+);
 
 // Gallery grouping/order: cover → any → inner → last.
 export const ROLE_ORDER = ['cover', 'any', 'inner', 'last'];

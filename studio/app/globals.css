@@ -1,11 +1,8 @@
-/* Design system A · Apple Native (2026-11-07). UI type: Poppins for Latin/digits,
+/* Design system A · Apple Native (2026-11-07). UI type: Inter for Latin/digits (variable,
+   one file for every weight),
    Freesentation for Hangul (KS X 1001 subset), letter-spacing 0. Card templates keep
    their own brand fonts (brands/*.json) — these only style the app around them. */
-@font-face { font-family: 'Poppins'; font-weight: 400; font-display: swap; src: url('/fonts/ui/poppins-400.woff2') format('woff2'); }
-@font-face { font-family: 'Poppins'; font-weight: 500; font-display: swap; src: url('/fonts/ui/poppins-500.woff2') format('woff2'); }
-@font-face { font-family: 'Poppins'; font-weight: 600; font-display: swap; src: url('/fonts/ui/poppins-600.woff2') format('woff2'); }
-@font-face { font-family: 'Poppins'; font-weight: 700; font-display: swap; src: url('/fonts/ui/poppins-700.woff2') format('woff2'); }
-@font-face { font-family: 'Poppins'; font-weight: 800; font-display: swap; src: url('/fonts/ui/poppins-800.woff2') format('woff2'); }
+@font-face { font-family: 'Inter'; font-weight: 100 900; font-display: swap; src: url('/fonts/ui/inter-var.woff2') format('woff2'); }
 @font-face { font-family: 'Freesentation'; font-weight: 400; font-display: swap; src: url('/fonts/ui/freesentation-400.woff2') format('woff2'); }
 @font-face { font-family: 'Freesentation'; font-weight: 500; font-display: swap; src: url('/fonts/ui/freesentation-500.woff2') format('woff2'); }
 @font-face { font-family: 'Freesentation'; font-weight: 600; font-display: swap; src: url('/fonts/ui/freesentation-600.woff2') format('woff2'); }
@@ -31,7 +28,7 @@
   --error-soft: #fdeceb;
   --radius: 12px;
   --pill: 980px;
-  --font: Poppins, Freesentation, -apple-system, BlinkMacSystemFont, sans-serif;
+  --font: Inter, Freesentation, -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 * { box-sizing: border-box; }
@@ -408,6 +405,7 @@ button.danger { color: var(--error); }
 .link.small { font-size: 12px; justify-self: start; }
 .caption.dm { min-height: 150px; }
 .new-btn { margin-bottom: 20px; }
+.home-tools button.primary.on { box-shadow: inset 0 0 0 2px rgba(255,255,255,.35); }
 .new-post {
   display: grid; gap: 16px; margin-bottom: 24px; padding: 20px; background: var(--surface);
   border: 0; border-radius: var(--radius);
@@ -423,6 +421,65 @@ button.danger { color: var(--error); }
   padding: 28px; background: var(--surface); border: 0; border-radius: 16px;
 }
 .login-box h1 { margin: 0; font-size: 20px; text-align: center; }
+
+/* 홈 도구 줄 + 계정 탭 */
+.home-tools { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 16px; }
+.home-tools button { min-height: 44px; padding: 10px 18px; font-size: 14px; }
+button.tool-dark { background: #3a3a3c; border-color: #3a3a3c; color: #fff; }
+button.tool-dark:hover:not(:disabled) { background: #2c2c2e; border-color: #2c2c2e; }
+button.tool-dark.on { background: #1d1d1f; border-color: #1d1d1f; box-shadow: inset 0 0 0 2px rgba(255,255,255,.25); }
+.home-tools + .new-post, .home-tools + .series { margin-top: 0; }
+.account-tabs {
+  display: flex; gap: 6px; overflow-x: auto; margin: 28px 0 14px; padding-bottom: 2px;
+  border-bottom: 1px solid var(--line);
+}
+.account-tab {
+  flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 10px 12px; margin-bottom: -1px;
+  color: var(--muted); text-decoration: none; font-weight: 600; font-size: 14px; border-bottom: 2px solid transparent;
+}
+.account-tab.on { color: var(--ink); border-bottom-color: var(--ink); }
+.account-tab .count {
+  min-width: 20px; padding: 1px 6px; border-radius: 999px; background: var(--track); color: var(--muted);
+  font-size: 11px; text-align: center; font-variant-numeric: tabular-nums;
+}
+.account-tab.on .count { background: var(--ink); color: #fff; }
+
+/* 세부 조정 — photo-editor style tool strip + one big slider. */
+.adjust { gap: 14px; }
+.adj-tools { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
+.adj-tool {
+  flex: none; display: grid; justify-items: center; gap: 6px; min-width: 64px; min-height: 0;
+  padding: 4px 6px; border: 0; background: transparent; color: var(--muted); border-radius: 12px;
+}
+.adj-tool:hover:not(:disabled) { background: transparent; color: var(--ink); }
+.adj-icon {
+  position: relative; width: 48px; height: 48px; display: grid; place-items: center;
+  border-radius: 50%; background: var(--bg); color: var(--ink);
+}
+.adj-tool.on .adj-icon { background: var(--ink); color: #fff; }
+.adj-tool.on { color: var(--ink); }
+.adj-name { font-size: 12px; font-weight: 600; }
+.adj-dot, .chip-dot {
+  position: absolute; top: 2px; right: 2px; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--accent); border: 2px solid var(--surface);
+}
+.adj-targets { display: flex; gap: 6px; overflow-x: auto; }
+.chip {
+  position: relative; flex: none; min-height: 32px; padding: 5px 13px; font-size: 13px; font-weight: 600;
+  color: var(--ink); background: var(--bg); border-color: transparent;
+}
+.chip.on { background: var(--ink); color: #fff; }
+.chip .chip-dot { top: -2px; right: -2px; }
+.adj-dial { display: flex; align-items: center; gap: 10px; }
+.adj-step { flex: none; width: 36px; height: 36px; background: var(--bg); border-color: transparent; }
+.adj-track { position: relative; flex: 1; display: flex; align-items: center; height: 36px; }
+.adj-zero {
+  position: absolute; top: 50%; width: 2px; height: 16px; margin: -8px 0 0 -1px; border-radius: 1px;
+  background: var(--line); pointer-events: none;
+}
+.adj-track input[type='range'] { position: relative; width: 100%; margin: 0; background: transparent; }
+.adj-foot { display: flex; align-items: center; justify-content: space-between; font-size: 13px; color: var(--muted); }
+.adj-value b { color: var(--ink); font-weight: 700; font-variant-numeric: tabular-nums; margin-left: 4px; }
 
 /* Phone-only pieces, hidden on PC. */
 .mobile-bar { display: none; }
@@ -444,6 +501,8 @@ button.danger { color: var(--error); }
 /* ---------- Mobile / narrow screens ---------- */
 @media (max-width: 920px) {
   .home { padding: 28px 16px 40px; }
+  .home-tools { display: grid; grid-template-columns: 1fr 1fr; }
+  .home-tools button { padding: 10px 8px; font-size: 13px; }
   .editor { display: flex; flex-direction: column; height: auto; min-height: 100dvh; padding-bottom: 88px; }
   .topbar { min-height: 56px; padding: 6px 8px; flex-wrap: nowrap; gap: 8px; }
   .topbar-left { flex: 1; min-width: 0; gap: 4px; }

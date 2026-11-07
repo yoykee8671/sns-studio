@@ -373,7 +373,7 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
       const res = await fetch(apiBase, { method: 'DELETE' });
       if (!res.ok) throw new Error(await errorOf(res));
       setDirty(false);
-      router.push(isLayout ? '/#my-templates' : '/');
+      router.push(isLayout ? '/#my-templates' : `/?account=${brandId}`);
     } catch (e) {
       notify(`삭제 실패: ${e.message}`, 'error');
       setBusy(null);
@@ -662,7 +662,7 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
     <div className="editor">
       <header className="topbar">
         <div className="topbar-left">
-          <Link href={isLayout ? '/#my-templates' : '/'} className="back" aria-label="목록으로"><Icon d={CHEVRON_LEFT} size={22} /></Link>
+          <Link href={isLayout ? '/#my-templates' : `/?account=${brandId}`} className="back" aria-label="목록으로"><Icon d={CHEVRON_LEFT} size={22} /></Link>
           <div className="topbar-title">
             <div className="crumb">
               {isLayout ? '내 템플릿 편집 · 미리보기 계정 ' : ''}@{brandId} · {meta.label} · {FORMAT_LABEL[post.format] ?? post.format}
@@ -968,42 +968,14 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
                 />
               ))}
 
-              <details className="field">
-                <summary>글자 세부 조정 (자간·행간·크기)</summary>
-                <p className="note">템플릿 기본값에서 벗어나고 싶을 때만 써요. 내보내기에 그대로 반영돼요.</p>
-                {sMeta.fields.map((f) => (
-                  <TextStyleRow
-                    key={f.key}
-                    label={f.label}
-                    value={slide.textStyle?.[f.key]}
-                    onChange={(v) => {
-                      const next = { ...(slide.textStyle ?? {}) };
-                      if (v) next[f.key] = v;
-                      else delete next[f.key];
-                      updateSlide(sel, { textStyle: Object.keys(next).length ? next : undefined });
-                    }}
-                  />
-                ))}
-              </details>
-
-              {(sMeta.sliders ?? []).map((s) => (
-                <div className="field" key={s.key}>
-                  <label>
-                    {s.label}
-                    <span className="meter">{slide[s.key] ?? s.default}{s.unit}</span>
-                  </label>
-                  <input
-                    type="range"
-                    min={s.min}
-                    max={s.max}
-                    step={s.step}
-                    value={slide[s.key] ?? s.default}
-                    onChange={(e) =>
-                      updateSlide(sel, { [s.key]: +e.target.value === s.default ? undefined : +e.target.value })
-                    }
-                  />
-                </div>
-              ))}
+              <AdjustPanel
+                key={`${sel}-${slide.template ?? post.template}`}
+                fields={sMeta.fields}
+                sliders={sMeta.sliders ?? []}
+                slide={slide}
+                onSlider={(k, v) => updateSlide(sel, { [k]: v })}
+                onTextStyle={(textStyle) => updateSlide(sel, { textStyle })}
+              />
 
               {sMeta.options
                 .filter((o) => (!o.coverOnly || sel === 0) && !o.hidden?.(slide))
@@ -1070,7 +1042,10 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
                 }
               }}
               onApplyCredit={() =>
-                update((p) => p.slides.forEach((s) => (s.credit = `📷 @${p.source.handle}`)))
+                update((p) => p.slides.forEach((s) => {
+                  s.credit = `📷 @${p.source.handle}`;
+                  s.source = `📷 @${p.source.handle}`;
+                }))
               }
               notify={notify}
             />
@@ -1402,41 +1377,139 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
   );
 }
 
-// Per-field typography overrides (slide.textStyle[key]): size is a px delta from the
-// template base, ls/lh are absolute overrides. Unset values fall back to the template.
-function TextStyleRow({ label, value, onChange }) {
-  const v = value ?? {};
-  const set = (k, raw, unsetAt) => {
-    const next = { ...v };
-    if (raw === unsetAt) delete next[k];
-    else next[k] = raw;
-    onChange(Object.keys(next).length ? next : undefined);
-  };
-  const row = (name, k, min, max, step, unsetAt, fmt) => (
-    <div className="sticker-meta">
-      <span>{name}</span>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={v[k] ?? unsetAt}
-        onChange={(e) => set(k, +e.target.value, unsetAt)}
-      />
-      <span className="meter">{v[k] === undefined ? '기본' : fmt(v[k])}</span>
-    </div>
+// 세부 조정 — photo-editor style: a strip of round tools (template sliders such as
+// 그라데이션 음영, then 크기 · 자간 · 행간 for text), one big slider for the selected
+// tool, and for text tools a row of chips choosing which text it applies to. A dot marks
+// anything changed; tapping the value resets it.
+// Text values live in slide.textStyle[field] = { size: px delta, ls: em, lh: unitless };
+// an unset value means "the template's own".
+const TEXT_TOOLS = [
+  { id: 'size', label: '크기', min: -8, max: 8, step: 0.5, base: 0, fmt: (v) => `${v > 0 ? '+' : ''}${v}px`,
+    icon: <><path d="M4 18L9 6l5 12" /><path d="M5.8 14h6.4" /><path d="M15.5 18l3-7.5 3 7.5" /></> },
+  { id: 'ls', label: '자간', min: -0.1, max: 0.1, step: 0.005, base: -0.02, fmt: (v) => `${v}em`,
+    icon: <><path d="M3 12h18" /><path d="M6 9l-3 3 3 3" /><path d="M18 9l3 3-3 3" /></> },
+  { id: 'lh', label: '행간', min: 1.1, max: 2, step: 0.05, base: 1.5, fmt: (v) => `${v}`,
+    icon: <><path d="M12 3v18" /><path d="M9 6l3-3 3 3" /><path d="M9 18l3 3 3-3" /></> },
+];
+const SLIDER_ICON = <><circle cx="12" cy="12" r="8" /><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor" /></>;
+
+function AdjustPanel({ fields, sliders, slide, onSlider, onTextStyle }) {
+  const tools = [
+    ...sliders.map((s) => ({ ...s, id: `slider:${s.key}`, kind: 'slider', icon: SLIDER_ICON })),
+    ...(fields.length ? TEXT_TOOLS.map((t) => ({ ...t, kind: 'text' })) : []),
+  ];
+  const [toolId, setToolId] = useState(tools[0]?.id);
+  // Text target: the first field that has text, else the first field.
+  const [fieldKey, setFieldKey] = useState(
+    () => (fields.find((f) => String(slide[f.key] ?? '').trim()) ?? fields[0])?.key,
   );
+  if (!tools.length) return null;
+  const tool = tools.find((t) => t.id === toolId) ?? tools[0];
+  const styles = slide.textStyle ?? {};
+
+  const changed = (t) =>
+    t.kind === 'slider' ? slide[t.key] !== undefined : fields.some((f) => styles[f.key]?.[t.id] !== undefined);
+
+  let value;
+  let isSet;
+  let label;
+  if (tool.kind === 'slider') {
+    isSet = slide[tool.key] !== undefined;
+    value = slide[tool.key] ?? tool.default;
+    label = `${value}${tool.unit ?? ''}`;
+  } else {
+    const cur = styles[fieldKey]?.[tool.id];
+    isSet = cur !== undefined;
+    value = cur ?? tool.base;
+    label = isSet ? tool.fmt(value) : '기본';
+  }
+  const min = tool.min;
+  const max = tool.max;
+  const step = tool.step;
+  const round = (v) => Math.round(v / step) * step;
+  const clamp = (v) => Math.min(max, Math.max(min, +round(v).toFixed(4)));
+
+  const set = (raw) => {
+    const v = raw === undefined ? undefined : clamp(raw);
+    if (tool.kind === 'slider') {
+      onSlider(tool.key, v === undefined || v === tool.default ? undefined : v);
+      return;
+    }
+    const next = { ...styles };
+    const fieldStyle = { ...(next[fieldKey] ?? {}) };
+    if (v === undefined || v === tool.base) delete fieldStyle[tool.id];
+    else fieldStyle[tool.id] = v;
+    if (Object.keys(fieldStyle).length) next[fieldKey] = fieldStyle;
+    else delete next[fieldKey];
+    onTextStyle(Object.keys(next).length ? next : undefined);
+  };
+  const base = tool.kind === 'slider' ? tool.default : tool.base;
+  const pct = ((base - min) / (max - min)) * 100;
+
   return (
-    <div className="text-style-row">
-      <label>
-        {label}
-        {value && (
-          <button className="link" onClick={() => onChange(undefined)}>초기화</button>
+    <div className="field">
+      <label>세부 조정</label>
+      <div className="card adjust">
+        <div className="adj-tools" role="tablist" aria-label="조정 도구">
+          {tools.map((t) => (
+            <button
+              key={t.id}
+              role="tab"
+              aria-selected={t.id === tool.id}
+              className={`adj-tool ${t.id === tool.id ? 'on' : ''}`}
+              onClick={() => setToolId(t.id)}
+            >
+              <span className="adj-icon">
+                <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{t.icon}</svg>
+                {changed(t) && <i className="adj-dot" />}
+              </span>
+              <span className="adj-name">{t.label}</span>
+            </button>
+          ))}
+        </div>
+
+        {tool.kind === 'text' && fields.length > 1 && (
+          <div className="adj-targets" aria-label="적용할 글">
+            {fields.map((f) => (
+              <button
+                key={f.key}
+                className={`chip ${f.key === fieldKey ? 'on' : ''}`}
+                onClick={() => setFieldKey(f.key)}
+              >
+                {f.label.replace(/\s*\(.*\)$/, '')}
+                {styles[f.key]?.[tool.id] !== undefined && <i className="chip-dot" />}
+              </button>
+            ))}
+          </div>
         )}
-      </label>
-      {row('크기', 'size', -8, 8, 0.5, 0, (x) => `${x > 0 ? '+' : ''}${x}px`)}
-      {row('자간', 'ls', -0.1, 0.1, 0.005, -0.02, (x) => `${x}em`)}
-      {row('행간', 'lh', 1.1, 2, 0.05, 1.5, (x) => `${x}`)}
+
+        <div className="adj-dial">
+          <button className="btn-icon adj-step" aria-label="줄이기" onClick={() => set(value - step)} disabled={value <= min}>
+            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M5 12h14" /></svg>
+          </button>
+          <div className="adj-track">
+            <span className="adj-zero" style={{ left: `${pct}%` }} aria-hidden="true" />
+            <input
+              type="range"
+              min={min}
+              max={max}
+              step={step}
+              value={value}
+              aria-label={`${tool.label} 조정`}
+              onChange={(e) => set(+e.target.value)}
+              onDoubleClick={() => set(undefined)}
+            />
+          </div>
+          <button className="btn-icon adj-step" aria-label="늘리기" onClick={() => set(value + step)} disabled={value >= max}>
+            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+          </button>
+        </div>
+        <div className="adj-foot">
+          <span className="adj-value">{tool.label} <b>{label}</b></span>
+          <button className="link" onClick={() => set(undefined)} disabled={!isSet}>기본값으로</button>
+        </div>
+      </div>
     </div>
   );
 }

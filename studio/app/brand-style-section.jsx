@@ -9,9 +9,10 @@ import { FONT_CHOICES } from '@/lib/templates/fonts.mjs';
  * template at render time (loadBrand merges the overrides). Empty field = brand default.
  * @param {{ data: { brand: string, handle: string, effective: object, overrides: object }[] }} props
  */
-export default function BrandStyleSection({ data }) {
+export default function BrandStyleSection({ data, embedded = false }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [openState, setOpen] = useState(false);
+  const open = embedded || openState;
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
   // drafts[brand] = { point?, highlight?, headline?, body? } — only overridden fields.
@@ -61,9 +62,11 @@ export default function BrandStyleSection({ data }) {
 
   return (
     <section className="series">
+      {!embedded && (
       <button className="series-toggle" onClick={() => setOpen(!open)}>
-        내 매거진 스타일 {overridden > 0 && `(${overridden})`} {open ? '▴' : '▾'}
-      </button>
+          계정별 스타일 관리 {overridden > 0 && `(${overridden})`} {open ? '▴' : '▾'}
+        </button>
+      )}
       {open && (
         <div className="series-body">
           <p className="note">색과 글꼴을 한 번 정하면 그 계정의 모든 카드에 입혀요. 비워두면 브랜드 기본값.</p>

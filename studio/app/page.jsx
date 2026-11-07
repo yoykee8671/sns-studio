@@ -6,11 +6,8 @@ import { listLayouts, readHidden } from '@/lib/layouts.mjs';
 import { TEMPLATES, ROLE_ORDER } from '@/lib/templates/index.mjs';
 import { loadSeries } from '@/lib/series.mjs';
 import { suggestReady } from '@/lib/suggest.mjs';
-import NewPost from './new-post';
-import SeriesSection from './series-section';
-import BrandStyleSection from './brand-style-section';
 import DeletePostButton from './delete-post-button';
-import TemplatesSection from './templates-section';
+import HomeTools from './home-tools';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,12 +29,18 @@ const fmtDate = (iso) => {
 };
 const daysLeft = (iso) => Math.max(0, Math.ceil((Date.parse(iso) - Date.now()) / 86400000));
 
-export default async function Home() {
+export default async function Home({ searchParams }) {
+  const { account: accountParam } = await searchParams;
   // The server also runs this hourly; doing it here keeps the list honest right away.
   await expirePublishedMedia().catch(() => {});
   const [posts, brands, usage, layouts, hidden] = await Promise.all([
     listPosts(), listBrands(), mediaUsage(), listLayouts(), readHidden(),
   ]);
+  // Posts are listed per account (tabs); the choice lives in the URL so the editor's back
+  // link returns to the same account.
+  const account = brands.some((b) => b.id === accountParam) ? accountParam : brands[0]?.id;
+  const counts = Object.fromEntries(brands.map((b) => [b.id, posts.filter((p) => p.brand === b.id).length]));
+  const shown = posts.filter((p) => p.brand === account);
   const builtins = Object.entries(TEMPLATES)
     .map(([key, t]) => ({ key, label: t.meta.label, role: t.meta.role }))
     .sort((a, b) => ROLE_ORDER.indexOf(a.role) - ROLE_ORDER.indexOf(b.role));
@@ -78,16 +81,30 @@ export default async function Home() {
             <span className="note"> — 발행 완료 {MEDIA_RETENTION_DAYS}일 뒤 사진·영상은 자동으로 지워져요.</span>
           </p>
         )}
-        <NewPost brands={brands} aiReady={suggestReady()} layouts={layouts} />
       </header>
-      <SeriesSection data={seriesData} posts={posts} />
-      <TemplatesSection layouts={layouts} hidden={hidden} builtins={builtins} previewBrand={brands[0]?.id} />
-      <BrandStyleSection data={styleData} />
+      <HomeTools
+        newPost={{ brands, aiReady: suggestReady(), layouts, defaultBrand: account }}
+        series={{ data: seriesData, posts }}
+        templates={{ layouts, hidden, builtins, previewBrand: account }}
+        styles={{ data: styleData }}
+      />
+      <nav className="account-tabs" aria-label="계정">
+        {brands.map((b) => (
+          <Link
+            key={b.id}
+            href={`/?account=${b.id}`}
+            className={`account-tab ${b.id === account ? 'on' : ''}`}
+            aria-current={b.id === account ? 'page' : undefined}
+          >
+            {b.handle ?? `@${b.id}`}
+            <span className="count">{counts[b.id] ?? 0}</span>
+          </Link>
+        ))}
+      </nav>
       <ul className="post-list">
-        {posts.map((p) => (
+        {shown.map((p) => (
           <li key={`${p.brand}/${p.id}`} className="post-item">
             <Link href={`/posts/${p.brand}/${p.id}`} className="post-card">
-              <span className="post-brand">@{p.brand}</span>
               <strong className="post-title">{p.title}</strong>
               <span className="post-meta">
                 {p.series && <span className="badge badge-series">{String(p.series.no).padStart(3, '0')}호</span>}{' '}
@@ -104,7 +121,7 @@ export default async function Home() {
             <DeletePostButton brand={p.brand} id={p.id} />
           </li>
         ))}
-        {posts.length === 0 && <li className="empty">content/ 폴더에 게시물이 없어요.</li>}
+        {shown.length === 0 && <li className="empty">이 계정에는 아직 게시물이 없어요.</li>}
       </ul>
     </main>
   );

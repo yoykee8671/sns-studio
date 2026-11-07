@@ -12,9 +12,10 @@ const ROLE_LABEL = { cover: '표지', any: '어디든', inner: '속지', last: '
  * @param {{ layouts: object[], hidden: string[], builtins: {key: string, label: string, role: string}[],
  *           previewBrand: string }} props
  */
-export default function TemplatesSection({ layouts, hidden, builtins, previewBrand }) {
+export default function TemplatesSection({ layouts, hidden, builtins, previewBrand, embedded = false }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [openState, setOpen] = useState(false);
+  const open = embedded || openState;
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
   const [names, setNames] = useState({}); // id -> name being edited
@@ -84,9 +85,11 @@ export default function TemplatesSection({ layouts, hidden, builtins, previewBra
 
   return (
     <section className="series" id="my-templates">
+      {!embedded && (
       <button className="series-toggle" onClick={() => setOpen(!open)}>
-        {open ? '▾' : '▸'} 템플릿 관리 <small>내 템플릿 {layouts.length}개 · 숨긴 기본 템플릿 {hidden.length}개</small>
-      </button>
+          {open ? '▾' : '▸'} 공통 템플릿 관리 <small>내 템플릿 {layouts.length}개 · 숨긴 기본 템플릿 {hidden.length}개</small>
+        </button>
+      )}
       {open && (
         <div className="series-body">
           {error && <p className="form-error">{error}</p>}

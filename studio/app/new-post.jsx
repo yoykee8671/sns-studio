@@ -17,11 +17,12 @@ const MODES = [
   ['manuscript', '원고로 시작'],
 ];
 
-export default function NewPost({ brands, aiReady = false, layouts = [] }) {
+export default function NewPost({ brands, aiReady = false, layouts = [], embedded = false, onClose, defaultBrand }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [openState, setOpen] = useState(false);
+  const open = embedded || openState;
   const [mode, setMode] = useState('blank');
-  const [brand, setBrand] = useState(brands[0]?.id ?? '');
+  const [brand, setBrand] = useState(defaultBrand ?? brands[0]?.id ?? '');
   const [type, setType] = useState(TYPES[0]);
   const [format, setFormat] = useState('carousel');
   const [ratio, setRatio] = useState(DEFAULT_RATIO);
@@ -222,7 +223,7 @@ export default function NewPost({ brands, aiReady = false, layouts = [] }) {
       </div>
       {error && <p className="form-error">{error}</p>}
       <div className="modal-actions">
-        <button type="button" onClick={() => setOpen(false)}>취소</button>
+        <button type="button" onClick={() => (embedded ? onClose?.() : setOpen(false))}>취소</button>
         <button
           type="submit"
           className="primary"
