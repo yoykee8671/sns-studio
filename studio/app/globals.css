@@ -56,6 +56,13 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1
 .post-brand { color: var(--muted); font-size: 12px; }
 .post-title { font-size: 16px; }
 .post-meta { color: var(--muted); font-size: 12px; }
+.post-dates { color: var(--muted); font-size: 12px; }
+.button-link {
+  display: inline-block; border: 1px solid var(--line); background: var(--surface); border-radius: 8px;
+  padding: 8px 14px; text-decoration: none; color: inherit; white-space: nowrap;
+}
+.button-link:hover { border-color: #c9c6be; }
+.series-row.muted { opacity: .55; }
 .empty { color: var(--muted); }
 
 .badge {
@@ -105,17 +112,21 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1
 }
 
 /* Editor layout */
-.editor { display: grid; grid-template-rows: 64px auto 1fr; height: 100vh; }
+.editor { display: grid; grid-template-rows: auto auto 1fr; height: 100dvh; }
 .topbar {
-  display: flex; align-items: center; justify-content: space-between; gap: 16px;
-  padding: 0 20px; background: var(--surface); border-bottom: 1px solid var(--line);
+  display: flex; align-items: center; justify-content: space-between; gap: 8px 16px; flex-wrap: wrap;
+  min-height: 64px; padding: 10px 20px; background: var(--surface); border-bottom: 1px solid var(--line);
 }
+.topbar-title { min-width: 0; }
+.title { display: flex; align-items: center; gap: 6px; }
+.title-text { overflow: hidden; text-overflow: ellipsis; }
+.title-input { font-weight: 600; padding: 4px 8px; min-width: 220px; }
 .topbar-left { display: flex; align-items: center; gap: 14px; min-width: 0; }
 .back { text-decoration: none; color: var(--muted); font-size: 18px; }
 .crumb { color: var(--muted); font-size: 12px; }
 .title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dirty { margin-left: 8px; color: var(--warn); font-size: 12px; font-weight: 500; }
-.actions { display: flex; gap: 8px; align-items: center; }
+.actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 .topbar-danger { color: var(--error); }
 .suggest-row { flex-direction: row; align-items: center; gap: 10px; display: flex; }
 .suggest-row .note { flex: 1; }
@@ -127,11 +138,23 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1
 }
 .split button { border-radius: 0 8px 8px 0; }
 
-.workspace { display: grid; grid-template-columns: 112px 1fr 400px; min-height: 0; }
+ /* PC: thumbnails + preview on the left, the settings panel at phone width on the right. */
+.workspace { display: grid; grid-template-columns: 112px minmax(0, 1fr) clamp(360px, 30vw, 430px); min-height: 0; }
 
 .thumbs { overflow-y: auto; padding: 14px 12px; display: grid; gap: 10px; align-content: start; }
-.thumb { padding: 0; border: 2px solid transparent; border-radius: 8px; background: none; position: relative; }
+.thumb {
+  padding: 0; border: 2px solid transparent; border-radius: 8px; background: none; position: relative;
+  user-select: none; -webkit-user-select: none; cursor: grab;
+}
 .thumb.active { border-color: var(--ink); }
+.thumb.dragging { opacity: .35; }
+.thumb.drop-before, .thumb.drop-after { border-color: var(--accent); border-style: dashed; }
+.drag-handle {
+  position: absolute; right: 4px; top: 4px; z-index: 2; font-size: 13px; line-height: 1;
+  padding: 3px 4px; border-radius: 4px; background: rgba(255,255,255,.9); color: var(--muted);
+  touch-action: none; cursor: grab; opacity: 0;
+}
+.thumb:hover .drag-handle, .thumb.active .drag-handle { opacity: 1; }
 .thumb-frame { overflow: hidden; border-radius: 6px; position: relative; }
 .thumb-frame iframe { border: 0; transform-origin: 0 0; pointer-events: none; }
 .add-slide { font-size: 12px; padding: 8px 4px; border-style: dashed; color: var(--muted); }
@@ -346,16 +369,28 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1
   .actions { flex-wrap: wrap; gap: 6px; width: 100%; }
   .actions button, .split select, .split button { padding: 7px 10px; font-size: 13px; }
 
+  .topbar { position: static; }
+  .actions { flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; padding-bottom: 2px; }
+
+  /* Phone: the preview stays pinned on top while the settings scroll underneath,
+     then the draggable thumbnail strip, then the panel. */
   .workspace { display: flex; flex-direction: column; min-height: 0; }
+  .stage {
+    order: 1; flex: none; height: 44dvh; min-height: 260px; padding: 8px;
+    position: sticky; top: 0; z-index: 12; background: var(--bg); border-bottom: 1px solid var(--line);
+  }
   .thumbs {
-    display: flex; flex-direction: row; overflow-x: auto; overflow-y: hidden;
+    order: 2; display: flex; flex-direction: row; overflow-x: auto; overflow-y: hidden;
     padding: 10px 12px; gap: 8px; background: var(--surface); border-bottom: 1px solid var(--line);
   }
+  .panel { order: 3; }
   .thumb, .add-slide { flex: none; }
   .add-slide { width: 64px; }
+  .drag-handle { opacity: 1; font-size: 15px; padding: 4px 6px; }
+  .thumb { cursor: default; }
 
-  .stage { flex: none; height: 58vh; min-height: 320px; padding: 10px; }
-  .stage-hint { font-size: 11px; text-align: center; }
+  .stage-hint { display: none; }
+  .stage-size { margin-top: 6px; }
 
   .panel { border-left: 0; border-top: 1px solid var(--line); display: block; }
   .panel-body { overflow: visible; padding: 14px; }

@@ -79,6 +79,23 @@ async function downloadBlob(res, fallbackName) {
   URL.revokeObjectURL(url);
 }
 
+// Templates with a '배경 사진' option hide the photo until it is switched on. A slide that
+// already carries a photo/video keeps showing it after a template switch or an upload.
+const photoPatch = (tMeta, slide) =>
+  (slide.media || slide.image) && tMeta.options?.some((o) => o.key === 'photo') && slide.photo !== 'show'
+    ? { photo: 'show' }
+    : {};
+
+// Slide keys that hold content (kept when a 내 템플릿 design is applied to a slide).
+const MEDIA_KEYS = ['media', 'mediaType', 'imageSha256', 'image', 'focus', 'zoom'];
+
+const reorder = (arr, from, to) => {
+  const next = [...arr];
+  const [item] = next.splice(from, 1);
+  next.splice(to, 0, item);
+  return next;
+};
+
 const loadPresets = () => {
   try {
     return JSON.parse(localStorage.getItem(PRESET_KEY) ?? '[]');
@@ -87,7 +104,12 @@ const loadPresets = () => {
   }
 };
 
-export default function Editor({ brandId, postId }) {
+/**
+ * kind 'post' edits content/<brand>/<postId>; kind 'layout' edits a 내 템플릿 (postId = its
+ * id) with the same canvas, but without media, export, publishing or captions.
+ */
+export default function Editor({ brandId, postId, kind = 'post' }) {
+  const isLayout = kind === 'layout';
   const router = useRouter();
   const [ctx, setCtx] = useState(null); // { brand, logoSvg, publish, closing }
   const [post, setPost] = useState(null);
@@ -103,13 +125,24 @@ export default function Editor({ brandId, postId }) {
   const [capDraft, setCapDraft] = useState(null); // { detailed, short, hashtags, view }
   const [gallery, setGallery] = useState(null); // null | 'switch' (현재 장) | 'add' (새 장)
   const [loadError, setLoadError] = useState(null);
+  const [library, setLibrary] = useState({ layouts: [], hidden: [] }); // 내 템플릿 + hidden built-ins
+  const [dragging, setDragging] = useState(null); // { from, to } while a thumbnail is dragged
+  const [uploadNote, setUploadNote] = useState(null); // "2/5" while a batch uploads
 
   const mainFrame = useRef(null);
   const thumbFrames = useRef([]);
   const selRef = useRef(sel);
   selRef.current = sel;
 
-  const apiBase = `/api/posts/${brandId}/${postId}`;
+  const apiBase = isLayout ? `/api/layouts/${postId}` : `/api/posts/${brandId}/${postId}`;
+
+  const loadLibrary = useCallback(() => {
+    fetch('/api/layouts')
+      .then((r) => r.json())
+      .then((d) => setLibrary({ layouts: d.layouts ?? [], hidden: d.hidden ?? [] }))
+      .catch(() => {});
+  }, []);
+  useEffect(loadLibrary, [loadLibrary]);
 
   useEffect(() => {
     fetch(apiBase)
@@ -249,13 +282,13 @@ export default function Editor({ brandId, postId }) {
       setPost(d.post);
       setImages(d.images);
       setDirty(false);
-      notify('임시 저장했어요.');
+      notify(isLayout ? '템플릿을 저장했어요.' : '임시 저장했어요.');
     } catch (e) {
       notify(`저장 실패: ${e.message}`, 'error');
     } finally {
       setBusy(null);
     }
-  }, [apiBase, post, notify]);
+  }, [apiBase, post, notify, isLayout]);
 
   useEffect(() => {
     const onKey = (e) => {
@@ -328,7 +361,7 @@ export default function Editor({ brandId, postId }) {
       const res = await fetch(apiBase, { method: 'DELETE' });
       if (!res.ok) throw new Error(await errorOf(res));
       setDirty(false);
-      router.push('/');
+      router.push(isLayout ? '/#my-templates' : '/');
     } catch (e) {
       notify(`삭제 실패: ${e.message}`, 'error');
       setBusy(null);
@@ -394,27 +427,88 @@ export default function Editor({ brandId, postId }) {
     }
   };
 
-  const upload = async (file) => {
-    if (!file) return;
-    setBusy('upload');
-    try {
-      const body = new FormData();
-      body.append('file', file);
-      const res = await fetch(`${apiBase}/media`, { method: 'POST', body });
-      if (res.status === 413) throw new Error('파일이 너무 커요 (최대 100MB). 영상을 압축해서 다시 올려주세요.');
-      if (!res.ok) throw new Error(await errorOf(res));
-      const fields = await res.json();
-      updateSlide(sel, { ...fields, image: undefined });
-      setImages((im) => im.map((s, i) => (i === sel ? { state: 'ok', sha: fields.imageSha256 } : s)));
-      notify(`${fields.mediaType === 'video' ? '영상' : '사진'}을 올렸어요. 저장을 눌러야 게시물에 남아요.`);
-    } catch (e) {
-      notify(`업로드 실패: ${e.message}`, 'error');
-    } finally {
-      setBusy(null);
-    }
+  const maxSlides = closingUrl ? 9 : 10; // Instagram carousels take 10 items incl. the closing slide
+
+  const usesMediaAt = (p, i) => {
+    const t = resolveTemplate(p, p.slides[i]).meta;
+    return t.mediaTypes.length > 0;
+  };
+  // Template for slides created by a multi-file upload: the current slide's, when it
+  // shows photos; otherwise the post's, otherwise any photo template of this format.
+  const photoTemplateKey = (p, i) => {
+    const candidates = [p.slides[i]?.template ?? p.template, p.template, 'inner-photo-split', 'editorial-photo'];
+    return (
+      candidates.find((k) => TEMPLATES[k]?.meta.mediaTypes.length && TEMPLATES[k].meta.formats.includes(p.format)) ??
+      Object.keys(TEMPLATES).find((k) => TEMPLATES[k].meta.mediaTypes.length && TEMPLATES[k].meta.formats.includes(p.format))
+    );
   };
 
-  const maxSlides = closingUrl ? 9 : 10; // Instagram carousels take 10 items incl. the closing slide
+  /**
+   * Uploads one or many photos/videos. The first goes on the selected slide; the rest
+   * fill the following slides that still lack a photo, then become new slides (carousel
+   * only, up to the Instagram limit). Files upload one by one (each ≤ 100MB through the
+   * tunnel) and the slides change in a single step once they are on the server.
+   */
+  const uploadFiles = async (fileList) => {
+    const files = [...(fileList ?? [])];
+    if (!files.length) return;
+    const multi = post.format === 'carousel';
+    const plan = [sel];
+    let len = post.slides.length;
+    for (let k = 1; k < files.length && multi; k++) {
+      let j = plan[plan.length - 1] + 1;
+      while (j < len && (!usesMediaAt(post, j) || post.slides[j].media || post.slides[j].image)) j++;
+      if (j < len) plan.push(j);
+      else if (len < maxSlides) plan.push(len++);
+      else break;
+    }
+    const skipped = files.length - plan.length;
+    setBusy('upload');
+    const done = [];
+    try {
+      for (let k = 0; k < plan.length; k++) {
+        if (plan.length > 1) setUploadNote(`${k + 1}/${plan.length}`);
+        const body = new FormData();
+        body.append('file', files[k]);
+        const res = await fetch(`${apiBase}/media`, { method: 'POST', body });
+        if (res.status === 413) throw new Error(`${files[k].name}: 파일이 너무 커요 (최대 100MB). 영상을 압축해서 다시 올려주세요.`);
+        if (!res.ok) throw new Error(`${files[k].name}: ${await errorOf(res)}`);
+        done.push({ index: plan[k], fields: await res.json() });
+      }
+    } catch (e) {
+      notify(`업로드 실패: ${e.message}${done.length ? ` (앞의 ${done.length}개는 올라갔어요)` : ''}`, 'error');
+    } finally {
+      setBusy(null);
+      setUploadNote(null);
+    }
+    if (!done.length) return;
+    update((p) => {
+      const key = photoTemplateKey(p, sel);
+      for (const { index, fields } of done) {
+        if (index >= p.slides.length) {
+          const s = TEMPLATES[key].meta.newSlide(p);
+          if (key !== p.template) s.template = key;
+          p.slides.push(s);
+        }
+        const slide = p.slides[index];
+        Object.assign(slide, fields);
+        delete slide.image;
+        Object.assign(slide, photoPatch(resolveTemplate(p, slide).meta, slide));
+      }
+    });
+    setImages((im) => {
+      const next = [...im];
+      for (const { index, fields } of done) next[index] = { state: 'ok', sha: fields.imageSha256 };
+      return next;
+    });
+    const added = done.filter((d) => d.index >= post.slides.length).length;
+    notify(
+      done.length === 1
+        ? `${done[0].fields.mediaType === 'video' ? '영상' : '사진'}을 올렸어요. 저장을 눌러야 게시물에 남아요.`
+        : `${done.length}개를 올렸어요${added ? ` (새 장 ${added}개 추가)` : ''}.` +
+            `${skipped > 0 ? ` 장 수 제한으로 ${skipped}개는 빠졌어요.` : ''} 저장을 눌러야 남아요.`,
+    );
+  };
   // templateKey undefined = inherit the previous slide's template so a chosen layout continues.
   const addSlide = (templateKey) => {
     const prevSlide = post.slides[post.slides.length - 1];
@@ -437,17 +531,91 @@ export default function Editor({ brandId, postId }) {
     setReports({});
     setSel(Math.max(0, i - 1));
   };
-  const moveSlide = (i, d) => {
-    const j = i + d;
-    if (j < 0 || j >= post.slides.length) return;
-    update((p) => ([p.slides[i], p.slides[j]] = [p.slides[j], p.slides[i]]));
-    setImages((im) => {
-      const n = [...im];
-      [n[i], n[j]] = [n[j], n[i]];
-      return n;
-    });
+  const moveSlideTo = (from, to) => {
+    if (from === to || to < 0 || to >= post.slides.length) return;
+    update((p) => (p.slides = reorder(p.slides, from, to)));
+    setImages((im) => reorder(im, from, to));
     setReports({});
-    setSel(j);
+    setSel(to);
+  };
+  const moveSlide = (i, d) => moveSlideTo(i, i + d);
+
+  // Drag to reorder thumbnails (mouse: the whole card; touch: the ⠿ handle, so the
+  // strip still scrolls). A 6px move turns a press into a drag; the click is then eaten.
+  const thumbEls = useRef([]);
+  const dragRef = useRef(null);
+  const onThumbPointerDown = (e, i) => {
+    if (e.button !== 0) return;
+    if (e.pointerType !== 'mouse' && !e.target.closest('.drag-handle')) return;
+    dragRef.current = { from: i, to: i, x: e.clientX, y: e.clientY, active: false };
+    const targetAt = (x, y) => {
+      let best = dragRef.current.to;
+      let bestD = Infinity;
+      thumbEls.current.forEach((el, k) => {
+        if (!el || k >= post.slides.length) return;
+        const r = el.getBoundingClientRect();
+        const d = Math.hypot(x - (r.left + r.width / 2), y - (r.top + r.height / 2));
+        if (d < bestD) [best, bestD] = [k, d];
+      });
+      return best;
+    };
+    const onMove = (ev) => {
+      const d = dragRef.current;
+      if (!d) return;
+      if (!d.active && Math.hypot(ev.clientX - d.x, ev.clientY - d.y) < 6) return;
+      d.active = true;
+      ev.preventDefault();
+      d.to = targetAt(ev.clientX, ev.clientY);
+      setDragging({ from: d.from, to: d.to });
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+      const d = dragRef.current;
+      setDragging(null);
+      if (d?.active) {
+        moveSlideTo(d.from, d.to);
+        d.eatClick = true;
+        setTimeout(() => (dragRef.current = null), 0);
+      } else dragRef.current = null;
+    };
+    window.addEventListener('pointermove', onMove, { passive: false });
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+  };
+
+  // 내 템플릿 (one-slide) applied to a slide: its design replaces the slide's, while the
+  // slide keeps its photo/video and any text the new template also has.
+  const designSlide = (p, layoutSlide, keep = {}) => {
+    const { template: key, ...design } = structuredClone(layoutSlide);
+    const t = TEMPLATES[key];
+    const next = { ...t.meta.newSlide(p), ...design };
+    for (const k of MEDIA_KEYS) if (keep[k] !== undefined) next[k] = keep[k];
+    for (const f of t.meta.fields) if (keep[f.key]) next[f.key] = keep[f.key];
+    if (key !== p.template) next.template = key;
+    else delete next.template;
+    return { ...next, ...photoPatch(t.meta, next) };
+  };
+
+  const saveAsLayout = async (name) => {
+    setBusy('layout');
+    try {
+      const res = await fetch('/api/layouts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, post }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error);
+      setModal(null);
+      loadLibrary();
+      notify(`'${d.layout.name}' 템플릿으로 저장했어요. 새 게시물 만들 때 '내 템플릿'에서 고를 수 있어요.`);
+    } catch (e) {
+      notify(`템플릿 저장 실패: ${e.message}`, 'error');
+    } finally {
+      setBusy(null);
+    }
   };
 
   if (loadError) return <main className="center-msg">불러오지 못했어요: {loadError}</main>;
@@ -471,19 +639,34 @@ export default function Editor({ brandId, postId }) {
   const isCuration = post.contentType === 'curation';
   const blocked = isCuration && post.source?.permission !== 'granted';
   const thumbScale = THUMB_W / size.width;
-  const title =
-    (post.slides[0].headline || post.slides[0].title || post.slides[0].name || '').replace(/\n/g, ' ') ||
-    (post.source?.handle && `@${post.source.handle} 소개`) || post.id;
+  const title = isLayout
+    ? post.layoutName
+    : (post.slides[0].headline || post.slides[0].title || post.slides[0].name || '').replace(/\n/g, ' ') ||
+      (post.source?.handle && `@${post.source.handle} 소개`) || post.id;
 
   return (
     <div className="editor">
       <header className="topbar">
         <div className="topbar-left">
-          <Link href="/" className="back">←</Link>
-          <div>
-            <div className="crumb">@{brandId} · {meta.label} · {FORMAT_LABEL[post.format] ?? post.format}</div>
+          <Link href={isLayout ? '/#my-templates' : '/'} className="back">←</Link>
+          <div className="topbar-title">
+            <div className="crumb">
+              {isLayout ? '내 템플릿 편집 · 미리보기 계정 ' : ''}@{brandId} · {meta.label} · {FORMAT_LABEL[post.format] ?? post.format}
+            </div>
+            {isLayout ? (
+              <div className="title">
+                <input
+                  className="text-input title-input"
+                  value={post.layoutName ?? ''}
+                  maxLength={40}
+                  aria-label="템플릿 이름"
+                  onChange={(e) => update((p) => (p.layoutName = e.target.value))}
+                />
+                {dirty && <span className="dirty">저장 안 됨</span>}
+              </div>
+            ) : (
             <div className="title">
-              {title}
+              <span className="title-text">{title}</span>
               <select
                 className={`status-select badge badge-${post.status}`}
                 value={post.status}
@@ -501,14 +684,24 @@ export default function Editor({ brandId, postId }) {
               {post.mediaPurged && <span className="badge">미디어 정리됨</span>}
               {dirty && <span className="dirty">저장 안 됨</span>}
             </div>
+            )}
           </div>
         </div>
         <div className="actions">
           <button className="topbar-danger" onClick={() => setModal({ kind: 'delete' })} disabled={!!busy}>
             삭제
           </button>
+          {isLayout ? (
+            <button className="primary" onClick={save} disabled={!!busy}>
+              {busy === 'save' ? '저장 중…' : '템플릿 저장'}
+            </button>
+          ) : (
+          <>
           <button onClick={save} disabled={!!busy}>
             {busy === 'save' ? '저장 중…' : '임시 저장'}
+          </button>
+          <button onClick={() => setModal({ kind: 'saveLayout', name: '' })} disabled={!!busy}>
+            템플릿으로 저장
           </button>
           <div className="split">
             <select value={format} onChange={(e) => setFormat(e.target.value)} aria-label="이미지 형식">
@@ -529,24 +722,38 @@ export default function Editor({ brandId, postId }) {
           >
             {busy === 'publish' ? '발행 중…' : post.status === 'published' ? '발행 완료' : '이대로 발행하기'}
           </button>
+          </>
+          )}
         </div>
       </header>
 
-      {blocked && (
+      {blocked && !isLayout && (
         <div className="banner">
           원작자 허락 전이라 내려받기·발행이 잠겨 있어요. <button className="link" onClick={() => setTab('source')}>소재·출처 탭</button>에서 허락 상태를 바꿔주세요.
         </div>
       )}
 
       <div className={`workspace ${blocked ? 'with-banner' : ''}`}>
-        <nav className="thumbs">
+        <nav className="thumbs" aria-label="장 목록 (끌어서 순서 변경)">
           {post.slides.map((s, i) => (
             <button
               key={i}
-              className={`thumb ${i === sel ? 'active' : ''}`}
-              onClick={() => setSel(i)}
+              ref={(el) => (thumbEls.current[i] = el)}
+              className={[
+                'thumb',
+                i === sel && 'active',
+                dragging?.from === i && 'dragging',
+                dragging && dragging.to === i && dragging.from !== i && (dragging.from < i ? 'drop-after' : 'drop-before'),
+              ].filter(Boolean).join(' ')}
+              onPointerDown={(e) => onThumbPointerDown(e, i)}
+              onClick={() => {
+                if (dragRef.current?.eatClick) return;
+                setSel(i);
+              }}
               aria-label={`${i + 1}장`}
+              title="끌어서 순서를 바꿀 수 있어요"
             >
+              {post.slides.length > 1 && <span className="drag-handle" aria-hidden>⠿</span>}
               <div className="thumb-frame" style={{ width: THUMB_W, height: size.height * thumbScale }}>
                 <iframe
                   ref={(el) => (thumbFrames.current[i] = el)}
@@ -622,14 +829,16 @@ export default function Editor({ brandId, postId }) {
             <button className={tab === 'slide' ? 'on' : ''} onClick={() => setTab('slide')}>
               {onClosing ? '끝장' : `${sel + 1}장 편집`}
             </button>
-            {isCuration && (
+            {isCuration && !isLayout && (
               <button className={tab === 'source' ? 'on' : ''} onClick={() => setTab('source')}>
                 소재·출처
               </button>
             )}
-            <button className={tab === 'caption' ? 'on' : ''} onClick={() => setTab('caption')}>
-              캡션
-            </button>
+            {!isLayout && (
+              <button className={tab === 'caption' ? 'on' : ''} onClick={() => setTab('caption')}>
+                캡션
+              </button>
+            )}
           </div>
 
           {tab === 'slide' && onClosing && (
@@ -648,9 +857,11 @@ export default function Editor({ brandId, postId }) {
               <div className="slide-tools">
                 <button onClick={() => moveSlide(sel, -1)} disabled={sel === 0}>↑</button>
                 <button onClick={() => moveSlide(sel, 1)} disabled={sel === post.slides.length - 1}>↓</button>
-                <button onClick={() => exportOne(sel)} disabled={!!busy || blocked}>
-                  {busy === 'one' ? '만드는 중…' : `이 장만 ${format.toUpperCase()} 받기`}
-                </button>
+                {!isLayout && (
+                  <button onClick={() => exportOne(sel)} disabled={!!busy || blocked}>
+                    {busy === 'one' ? '만드는 중…' : `이 장만 ${format.toUpperCase()} 받기`}
+                  </button>
+                )}
                 <button className="danger" onClick={() => removeSlide(sel)} disabled={post.slides.length === 1}>이 장 삭제</button>
               </div>
 
@@ -665,13 +876,36 @@ export default function Editor({ brandId, postId }) {
                 </div>
               )}
 
-              {sMeta.mediaTypes.length > 0 && (
+              {isLayout && (
+                <div className="field">
+                  <label>설명 <small>(선택)</small></label>
+                  <input
+                    className="text-input"
+                    value={post.layoutDesc ?? ''}
+                    maxLength={120}
+                    placeholder="어떤 게시물에 쓰는 템플릿인지"
+                    onChange={(e) => update((p) => (p.layoutDesc = e.target.value))}
+                  />
+                  <p className="note">
+                    템플릿에는 장 구성과 디자인 설정만 저장돼요. 글과 사진은 새 게시물에서 채워요.
+                    여기서 입력한 글은 저장할 때 비워져요.
+                  </p>
+                </div>
+              )}
+
+              {!isLayout && sMeta.mediaTypes.length === 0 && (slide.media || slide.image) && (
+                <p className="note">이 템플릿은 사진을 쓰지 않아요. 올린 사진은 보관돼서 사진 템플릿으로 바꾸면 다시 보여요.</p>
+              )}
+
+              {!isLayout && sMeta.mediaTypes.length > 0 && (
                 <MediaRow
                   slide={slide}
                   status={images[sel]}
                   accept={sMeta.mediaTypes.includes('video') ? 'image/*,video/*' : 'image/*'}
+                  multiple={post.format === 'carousel'}
                   busy={busy === 'upload'}
-                  onUpload={upload}
+                  progress={uploadNote}
+                  onUpload={uploadFiles}
                   onPin={() => updateSlide(sel, { imageSha256: images[sel].sha })}
                   onZoom={(z) => updateSlide(sel, { zoom: z === 1 ? undefined : z })}
                 />
@@ -878,13 +1112,30 @@ export default function Editor({ brandId, postId }) {
           current={gallery === 'switch' ? (slide?.template ?? post.template) : undefined}
           title={gallery === 'switch' ? `${sel + 1}장의 템플릿 고르기` : '새 장의 템플릿 고르기'}
           quickLabel={gallery === 'add' ? '직전 장과 같게 추가' : undefined}
+          hidden={library.hidden}
+          mine={library.layouts}
           onQuick={() => {
             addSlide();
             setGallery(null);
           }}
           onPick={(key) => {
-            if (gallery === 'switch') updateSlide(sel, { template: key === post.template ? undefined : key });
-            else addSlide(key);
+            if (gallery === 'switch') {
+              updateSlide(sel, {
+                template: key === post.template ? undefined : key,
+                ...photoPatch(TEMPLATES[key].meta, slide),
+              });
+            } else addSlide(key);
+            setGallery(null);
+          }}
+          onPickMine={(layout) => {
+            if (gallery === 'switch') {
+              update((p) => (p.slides[sel] = designSlide(p, layout.slide, p.slides[sel])));
+            } else {
+              update((p) => p.slides.push(designSlide(p, layout.slide)));
+              const t = TEMPLATES[layout.slide.template].meta;
+              setImages((im) => [...im, { state: t.mediaTypes.length ? 'missing' : 'none' }]);
+              setSel(post.slides.length);
+            }
             setGallery(null);
           }}
           onClose={() => setGallery(null)}
@@ -955,13 +1206,44 @@ export default function Editor({ brandId, postId }) {
                 </div>
               </>
             )}
+            {modal.kind === 'saveLayout' && (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  saveAsLayout(modal.name);
+                }}
+              >
+                <h2>내 템플릿으로 저장</h2>
+                <p>
+                  지금 게시물의 장 구성({post.slides.length}장)과 장마다 고른 템플릿·디자인 설정
+                  (글자 크기·색·음영·스티커 등)을 저장해요. 글과 사진은 저장하지 않아요.
+                </p>
+                <div className="field">
+                  <label>템플릿 이름</label>
+                  <input
+                    className="text-input"
+                    autoFocus
+                    maxLength={40}
+                    value={modal.name}
+                    placeholder="예: 주간 꿀팁 5장"
+                    onChange={(e) => setModal({ ...modal, name: e.target.value })}
+                  />
+                </div>
+                <div className="modal-actions">
+                  <button type="button" onClick={() => setModal(null)}>취소</button>
+                  <button type="submit" className="primary" disabled={busy === 'layout' || !modal.name.trim()}>
+                    {busy === 'layout' ? '저장 중…' : '저장'}
+                  </button>
+                </div>
+              </form>
+            )}
             {modal.kind === 'markPublished' && (
               <>
                 <h2>발행됨으로 표시할까요?</h2>
                 <p>
-                  Instagram에 올린 뒤 기록용으로 상태를 바꿔요. 원본 사진·영상을 서버에서
-                  정리하면 저장 용량이 줄어요 — 카드는 빈 사진 칸으로 남고, 내보낸 파일과
-                  Instagram 게시물은 그대로예요. 정리는 되돌릴 수 없어요.
+                  Instagram에 올린 뒤 기록용으로 상태를 바꿔요. 발행됨으로 표시하고 7일이 지나면
+                  사진·영상은 서버에서 자동으로 지워져요(글과 레이아웃은 남아요). 지금 바로
+                  정리할 수도 있어요 — 정리는 되돌릴 수 없어요.
                 </p>
                 <div className="modal-actions">
                   <button onClick={() => setModal(null)}>취소</button>
@@ -974,10 +1256,12 @@ export default function Editor({ brandId, postId }) {
             )}
             {modal.kind === 'delete' && (
               <>
-                <h2>이 게시물을 삭제할까요?</h2>
+                <h2>{isLayout ? '이 템플릿을 삭제할까요?' : '이 게시물을 삭제할까요?'}</h2>
                 <p>
-                  장 내용과 올린 사진·영상, 수정 기록이 모두 지워지고 되돌릴 수 없어요.
-                  {post.status === 'published' && ' 이미 발행된 Instagram 게시물은 그대로 남아요.'}
+                  {isLayout
+                    ? '내 템플릿 목록에서 지워지고 되돌릴 수 없어요. 이 템플릿으로 만든 게시물은 그대로 남아요.'
+                    : '장 내용과 올린 사진·영상, 수정 기록이 모두 지워지고 되돌릴 수 없어요.'}
+                  {!isLayout && post.status === 'published' && ' 이미 발행된 Instagram 게시물은 그대로 남아요.'}
                 </p>
                 <div className="modal-actions">
                   <button onClick={() => setModal(null)} disabled={busy === 'delete'}>취소</button>
@@ -1040,7 +1324,7 @@ function TextStyleRow({ label, value, onChange }) {
   );
 }
 
-function MediaRow({ slide, status, accept, busy, onUpload, onPin, onZoom }) {
+function MediaRow({ slide, status, accept, multiple, busy, progress, onUpload, onPin, onZoom }) {
   const [label, tone] = IMAGE_STATE[status?.state] ?? ['확인 중', 'warn'];
   const name = (slide.media ?? slide.image)?.split('/').pop();
   const isImage = name && !isVideoPath(slide.media ?? slide.image);
@@ -1056,9 +1340,21 @@ function MediaRow({ slide, status, accept, busy, onUpload, onPin, onZoom }) {
         )}
       </div>
       <label className="upload">
-        <input type="file" accept={accept} disabled={busy} onChange={(e) => onUpload(e.target.files?.[0])} />
-        {busy ? '올리는 중…' : name ? '파일 바꾸기' : '파일 올리기'}
+        <input
+          type="file"
+          accept={accept}
+          multiple={multiple}
+          disabled={busy}
+          onChange={(e) => {
+            onUpload(e.target.files);
+            e.target.value = ''; // the same file can be picked again
+          }}
+        />
+        {busy ? `올리는 중…${progress ? ` (${progress})` : ''}` : name ? '파일 바꾸기' : multiple ? '파일 올리기 (여러 개 가능)' : '파일 올리기'}
       </label>
+      {multiple && !busy && (
+        <p className="note">여러 개를 고르면 이 장부터 차례로 채우고, 모자라면 장을 새로 만들어요.</p>
+      )}
       {isImage && (
         <>
           <div className="sticker-meta">

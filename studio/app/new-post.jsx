@@ -13,10 +13,11 @@ const FORMAT_LABEL = { carousel: '캐러셀', single: '단일 피드', reel: '�
 const MODES = [
   ['blank', '빈 게시물'],
   ['set', '추천 조합'],
+  ['layout', '내 템플릿'],
   ['manuscript', '원고로 시작'],
 ];
 
-export default function NewPost({ brands, aiReady = false }) {
+export default function NewPost({ brands, aiReady = false, layouts = [] }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState('blank');
@@ -25,6 +26,7 @@ export default function NewPost({ brands, aiReady = false }) {
   const [format, setFormat] = useState('carousel');
   const [ratio, setRatio] = useState(DEFAULT_RATIO);
   const [setId, setSetId] = useState(SETS[0].id);
+  const [layoutId, setLayoutId] = useState(layouts[0]?.id ?? null);
   const [text, setText] = useState('');
   const [slug, setSlug] = useState('');
   const [url, setUrl] = useState('');
@@ -39,7 +41,9 @@ export default function NewPost({ brands, aiReady = false }) {
     try {
       const endpoint = mode === 'manuscript' ? '/api/manuscript' : '/api/posts';
       const body =
-        mode === 'set'
+        mode === 'layout'
+          ? { brand, layout: layoutId, slug: slug || undefined }
+          : mode === 'set'
           ? { brand, set: setId, ratio, slug: slug || undefined }
           : mode === 'manuscript'
             ? { brand, set: setId, text, ratio, slug: slug || undefined }
@@ -73,7 +77,7 @@ export default function NewPost({ brands, aiReady = false }) {
     );
   }
 
-  const modes = MODES.filter(([m]) => m !== 'manuscript' || aiReady);
+  const modes = MODES.filter(([m]) => (m !== 'manuscript' || aiReady) && (m !== 'layout' || layouts.length));
 
   return (
     <form className="new-post" onSubmit={create}>
@@ -87,6 +91,7 @@ export default function NewPost({ brands, aiReady = false }) {
           ))}
         </div>
         {mode === 'set' && <p className="note">표지부터 마지막 장까지 템플릿이 짜인 세트로 한 번에 시작해요.</p>}
+        {mode === 'layout' && <p className="note">저장해 둔 장 구성과 디자인으로 시작해요. 글과 사진만 채우면 돼요.</p>}
         {mode === 'manuscript' && <p className="note">긴 글을 붙여넣으면 AI가 세트 구성에 맞춰 장별로 나눠 담아요.</p>}
       </div>
       <div className="field">
@@ -149,6 +154,25 @@ export default function NewPost({ brands, aiReady = false }) {
         </div>
       )}
 
+      {mode === 'layout' && (
+        <div className="field">
+          <label>내 템플릿</label>
+          <div className="set-list">
+            {layouts.map((l) => (
+              <button
+                type="button"
+                key={l.id}
+                className={`set-card ${layoutId === l.id ? 'on' : ''}`}
+                onClick={() => setLayoutId(l.id)}
+              >
+                <strong>{l.name} <small>{l.slides}장</small></strong>
+                <span>{l.desc || ' '}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {mode === 'manuscript' && (
         <div className="field">
           <label>원고</label>
@@ -163,7 +187,7 @@ export default function NewPost({ brands, aiReady = false }) {
         </div>
       )}
 
-      {(mode !== 'blank' || format !== 'reel') && (
+      {mode !== 'layout' && (mode !== 'blank' || format !== 'reel') && (
         <div className="field">
           <label>사이즈</label>
           <div className="seg">
@@ -200,7 +224,7 @@ export default function NewPost({ brands, aiReady = false }) {
         <button
           type="submit"
           className="primary"
-          disabled={busy || !brand || (mode === 'manuscript' && text.trim().length < 80)}
+          disabled={busy || !brand || (mode === 'manuscript' && text.trim().length < 80) || (mode === 'layout' && !layoutId)}
         >
           {busy ? (mode === 'manuscript' ? '원고 나누는 중…' : '만드는 중…') : '만들기'}
         </button>

@@ -267,10 +267,18 @@ export async function readPost(brandId, postId) {
   return normalize(JSON.parse(await readFile(file, 'utf8')));
 }
 
-/** Writes post.json, keeping the previous version in .history/ so nothing is lost. */
-export async function savePost(brandId, postId, post) {
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const next = { ...post, updatedAt: new Date().toISOString() };
+/**
+ * Writes post.json, keeping the previous version in .history/ so nothing is lost.
+ * publishedAt is stamped the first time a post is saved as 'published' and dropped
+ * when it leaves that status (it drives the media expiry below).
+ * touch: false keeps updatedAt (the "last saved" date) for housekeeping writes.
+ */
+export async function savePost(brandId, postId, post, { touch = true } = {}) {
+  const now = new Date().toISOString();
+  const stamp = now.replace(/[:.]/g, '-');
+  const next = { ...post, updatedAt: touch ? now : (post.updatedAt ?? now) };
+  if (next.status === 'published') next.publishedAt ??= now;
+  else delete next.publishedAt;
   const dir = postDir(brandId, postId);
   const file = path.join(dir, 'post.json');
   const history = path.join(dir, '.history');
@@ -295,7 +303,7 @@ export async function deletePost(brandId, postId) {
  * keeps rendering with media-missing placeholders; purged filenames stay on record.
  * Brand-asset references (slide.image) are not uploads and are left alone. Idempotent.
  */
-export async function purgeMedia(brandId, postId) {
+export async function purgeMedia(brandId, postId, { touch = true } = {}) {
   const post = await readPost(brandId, postId);
   const removed = [...new Set(post.slides.map((s) => s.media).filter(Boolean))]
     .map((m) => m.split('/').pop());
@@ -310,9 +318,45 @@ export async function purgeMedia(brandId, postId) {
   post.purgedFiles = [...new Set([...(post.purgedFiles ?? []), ...removed])];
   // Save the stripped post first: if the storage delete fails midway the post never
   // references half-deleted files, and re-running the purge cleans up the rest.
-  const saved = await savePost(brandId, postId, post);
+  const saved = await savePost(brandId, postId, post, { touch });
+  // out/ holds the last export (rendered JPG/PNG/MP4) — the other big thing on disk.
   await rm(path.join(postDir(brandId, postId), 'media'), { recursive: true, force: true });
+  await rm(path.join(postDir(brandId, postId), 'out'), { recursive: true, force: true });
   return saved;
+}
+
+// 발행 완료 후 이 기간이 지나면 사진·영상(원본 + 내보낸 파일)을 서버에서 지운다.
+// 글과 레이아웃(post.json)은 남아서 목록·템플릿 저장에 계속 쓸 수 있다.
+export const MEDIA_RETENTION_DAYS = 7;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** When a published post's media get deleted (ISO string), or null when not applicable. */
+export function mediaExpiresAt(post) {
+  if (post.status !== 'published' || post.mediaPurged) return null;
+  const since = post.publishedAt ?? post.updatedAt;
+  if (!since) return null;
+  return new Date(Date.parse(since) + MEDIA_RETENTION_DAYS * DAY_MS).toISOString();
+}
+
+/** Purges media of every post whose retention ran out. Returns the purged ids. */
+export async function expirePublishedMedia(now = Date.now()) {
+  const purged = [];
+  for (const brandId of await listDirNames('')) {
+    if (!SAFE_ID.test(brandId)) continue;
+    for (const postId of await listDirNames(brandId)) {
+      if (!SAFE_ID.test(postId)) continue;
+      try {
+        const post = await readPost(brandId, postId);
+        const at = mediaExpiresAt(post);
+        if (!at || Date.parse(at) > now) continue;
+        await purgeMedia(brandId, postId, { touch: false });
+        purged.push(`${brandId}/${postId}`);
+      } catch (e) {
+        if (e.code !== 'ENOENT') console.warn(`media expiry ${brandId}/${postId}: ${e.message}`);
+      }
+    }
+  }
+  return purged;
 }
 
 /** Uploaded-media bytes per brand. */
@@ -376,6 +420,9 @@ export async function listPosts() {
           slides: post.slides.length,
           series: post.series ?? null,
           updatedAt: post.updatedAt ?? null,
+          publishedAt: post.status === 'published' ? (post.publishedAt ?? null) : null,
+          mediaPurged: Boolean(post.mediaPurged),
+          mediaExpiresAt: mediaExpiresAt(post),
         });
       } catch {
         // not a post folder
