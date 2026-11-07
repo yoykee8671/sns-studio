@@ -1497,6 +1497,8 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
           quickLabel={gallery === 'add' ? '현재 템플릿 복제' : undefined}
           hidden={library.hidden}
           mine={library.layouts}
+          onLibraryChange={loadLibrary}
+          notify={notify}
           onQuick={() => {
             duplicateSlide(Math.min(sel, post.slides.length - 1));
             setGallery(null);
