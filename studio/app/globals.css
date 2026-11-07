@@ -206,9 +206,9 @@ button.danger { color: var(--error); }
   width: 72px; align-self: stretch; border-radius: 10px; border: 1px dashed var(--muted);
   background: transparent; color: var(--muted); font-size: 12px; font-weight: 500;
 }
-.thumb-num {
-  position: absolute; left: 6px; top: 6px; font-size: 11px; font-weight: 700;
-  background: rgba(255,255,255,.9); border-radius: 4px; padding: 0 5px;
+.thumb-flags {
+  position: absolute; left: 6px; top: 6px; font-size: 10px; font-weight: 700; line-height: 16px;
+  background: rgba(255,255,255,.9); border-radius: 4px; padding: 0 4px; pointer-events: none;
 }
 .dot {
   display: inline-block; width: 6px; height: 6px; margin-left: 3px; border-radius: 50%;

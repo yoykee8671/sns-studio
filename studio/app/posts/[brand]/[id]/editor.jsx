@@ -171,7 +171,8 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
     });
   useEffect(() => {
     let t;
-    const isField = (el) => el?.matches?.('input:not([type=range]):not([type=file]):not([type=color]), textarea, [contenteditable="true"]');
+    const isField = (el) =>
+      el?.matches?.('input:not([type]), input[type=text], input[type=search], input[type=url], textarea, [contenteditable="true"]');
     const onIn = (e) => {
       if (window.innerWidth > 920 || !isField(e.target)) return;
       clearTimeout(t);
@@ -1045,11 +1046,12 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
                     style={{ width: size.width, height: size.height, transform: `scale(${thumbScale})` }}
                   />
                 </div>
-                <span className="thumb-num">
-                  {i + 1}
-                  {mediaOf(brandId, postId, s, ctx.closing).type === 'video' && ' ▶'}
-                  {reports[i]?.issues.length > 0 && <span className="dot" title="QA 경고" />}
-                </span>
+                {(mediaOf(brandId, postId, s, ctx.closing).type === 'video' || reports[i]?.issues.length > 0) && (
+                  <span className="thumb-flags">
+                    {mediaOf(brandId, postId, s, ctx.closing).type === 'video' && '▶'}
+                    {reports[i]?.issues.length > 0 && <span className="dot" title="QA 경고" />}
+                  </span>
+                )}
               </button>
               </Fragment>
             ))}
