@@ -269,9 +269,13 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
       if (data?.type === 'layout-move' && /^[a-z][a-z0-9_-]{0,30}$/i.test(data.key ?? '')) {
         update((p) => {
           const s = p.slides[selRef.current];
-          const cur = { ...(s.layout?.[data.key] ?? {}) };
+          // Positions live in slide.arrange (slide.layout is curation-frame's own option);
+          // an object left in slide.layout by the first version moves over.
+          const prev = s.arrange ?? (s.layout && typeof s.layout === 'object' ? s.layout : {});
+          if (s.layout && typeof s.layout === 'object') delete s.layout;
+          const cur = { ...(prev[data.key] ?? {}) };
           for (const k of ['x', 'y', 'w', 'h']) if (Number.isFinite(data[k])) cur[k] = Math.round(data[k]);
-          s.layout = { ...(s.layout ?? {}), [data.key]: cur };
+          s.arrange = { ...prev, [data.key]: cur };
         });
       }
       if (data?.type === 'media-pan') {
@@ -1123,8 +1127,16 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
                     {layoutEdit ? '완료' : '옮기기'}
                   </button>
                 </div>
-                {slide.layout && Object.keys(slide.layout).length > 0 && (
-                  <button className="link small" onClick={() => updateSlide(sel, { layout: undefined })}>
+                {(slide.arrange || (slide.layout && typeof slide.layout === 'object')) && (
+                  <button
+                    className="link small"
+                    onClick={() =>
+                      updateSlide(sel, {
+                        arrange: undefined,
+                        ...(typeof slide.layout === 'object' ? { layout: undefined } : {}),
+                      })
+                    }
+                  >
                     이 장의 위치·크기 초기화
                   </button>
                 )}
@@ -1183,6 +1195,7 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
                 fields={sMeta.fields}
                 sliders={sMeta.sliders ?? []}
                 slide={slide}
+                brand={ctx.brand}
                 onSlider={(k, v) => updateSlide(sel, { [k]: v })}
                 onTextStyle={(textStyle) => updateSlide(sel, { textStyle })}
               />
@@ -1612,11 +1625,103 @@ const TEXT_TOOLS = [
     icon: <><path d="M12 3v18" /><path d="M9 6l3-3 3 3" /><path d="M9 18l3 3 3-3" /></> },
 ];
 const SLIDER_ICON = <><circle cx="12" cy="12" r="8" /><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor" /></>;
+// 색: per-field text color (slide.textStyle[field].color), chosen from swatches or HSB sliders.
+const COLOR_TOOL = {
+  id: 'color', label: '색', kind: 'text', isColor: true,
+  icon: <><circle cx="12" cy="12" r="8.5" /><circle cx="8.5" cy="10" r="1.3" fill="currentColor" /><circle cx="12" cy="7.5" r="1.3" fill="currentColor" /><circle cx="15.5" cy="10" r="1.3" fill="currentColor" /><path d="M12 20.5a3 3 0 0 1 0-6" /></>,
+};
+const SWATCHES = ['#ffffff', '#111111', '#3e8ff0', '#6cc04a', '#f7cb58', '#f18d32', '#e9485a', '#d0306c', '#a020c0'];
 
-function AdjustPanel({ fields, sliders, slide, onSlider, onTextStyle }) {
+const hexToHsv = (hex) => {
+  const n = parseInt(hex.slice(1), 16);
+  const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => v / 255);
+  const max = Math.max(r, g, b);
+  const d = max - Math.min(r, g, b);
+  let h = 0;
+  if (d) h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return { h: Math.round(((h * 60) + 360) % 360), s: max ? Math.round((d / max) * 100) : 0, v: Math.round(max * 100) };
+};
+const hsvToHex = ({ h, s, v }) => {
+  const f = (n) => {
+    const k = (n + h / 60) % 6;
+    return Math.round((v / 100) * (1 - (s / 100) * Math.max(0, Math.min(k, 4 - k, 1))) * 255);
+  };
+  return `#${[f(5), f(3), f(1)].map((x) => x.toString(16).padStart(2, '0')).join('')}`;
+};
+
+function ColorPicker({ value, brand, onChange }) {
+  const [hsv, setHsv] = useState(() => hexToHsv(value ?? '#e9485a'));
+  // Follow outside changes (other field chip, swatch) without losing the hue at grey.
+  useEffect(() => {
+    if (value && hsvToHex(hsv) !== value.toLowerCase() && hsvToHex(hexToHsv(value)) !== hsvToHex(hsv)) setHsv(hexToHsv(value));
+  }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Swatches/eyedropper pass their exact hex (the HSB round trip can be off by one).
+  const pick = (next, exact) => {
+    setHsv(next);
+    onChange(exact ?? hsvToHex(next));
+  };
+  const brandSwatches = [brand?.colors?.blue, brand?.colors?.lime].filter((c) => /^#[0-9a-fA-F]{6}$/.test(c ?? ''));
+  const eyedropper = typeof window !== 'undefined' && 'EyeDropper' in window;
+  const hue = hsvToHex({ h: hsv.h, s: 100, v: 100 });
+  const sliders = [
+    ['h', '색조', 360, 'linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)'],
+    ['s', '채도', 100, `linear-gradient(90deg,${hsvToHex({ ...hsv, s: 0 })},${hsvToHex({ ...hsv, s: 100 })})`],
+    ['v', '밝기', 100, `linear-gradient(90deg,#000,${hsvToHex({ ...hsv, v: 100 })})`],
+  ];
+  return (
+    <div className="color-picker">
+      <div className="swatches">
+        {eyedropper && (
+          <button
+            className="swatch tool"
+            aria-label="스포이드로 화면 색 고르기"
+            onClick={async () => {
+              try {
+                const { sRGBHex } = await new window.EyeDropper().open();
+                if (/^#[0-9a-fA-F]{6}$/.test(sRGBHex)) pick(hexToHsv(sRGBHex), sRGBHex.toLowerCase());
+              } catch {}
+            }}
+          >
+            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 4l6 6M17 7l-9.5 9.5L4 20l3.5-3.5" /><path d="M13 5l6 6" /></svg>
+          </button>
+        )}
+        <button className={`swatch none ${!value ? 'on' : ''}`} aria-label="기본 색 (템플릿)" onClick={() => onChange(undefined)} />
+        {[...brandSwatches, ...SWATCHES].map((c, k) => (
+          <button
+            key={`${c}-${k}`}
+            className={`swatch ${value?.toLowerCase() === c.toLowerCase() ? 'on' : ''}`}
+            style={{ background: c }}
+            aria-label={k < brandSwatches.length ? (k === 0 ? '포인트색' : '형광펜색') : c}
+            onClick={() => pick(hexToHsv(c), c.toLowerCase())}
+          />
+        ))}
+      </div>
+      {sliders.map(([k, label, max, bg]) => (
+        <div className="hsb" key={k}>
+          <span>{label}</span>
+          <input
+            type="range"
+            min={0}
+            max={max}
+            value={hsv[k]}
+            style={{ '--track': bg, '--thumb': k === 'h' ? hue : hsvToHex(hsv) }}
+            aria-label={label}
+            onChange={(e) => pick({ ...hsv, [k]: +e.target.value })}
+          />
+        </div>
+      ))}
+      <div className="adj-foot">
+        <span className="adj-value">색 <b>{value ? value.toUpperCase() : '템플릿 기본'}</b></span>
+        <button className="link" onClick={() => onChange(undefined)} disabled={!value}>기본값으로</button>
+      </div>
+    </div>
+  );
+}
+
+function AdjustPanel({ fields, sliders, slide, brand, onSlider, onTextStyle }) {
   const tools = [
     ...sliders.map((s) => ({ ...s, id: `slider:${s.key}`, kind: 'slider', icon: SLIDER_ICON })),
-    ...(fields.length ? TEXT_TOOLS.map((t) => ({ ...t, kind: 'text' })) : []),
+    ...(fields.length ? [...TEXT_TOOLS.map((t) => ({ ...t, kind: 'text' })), COLOR_TOOL] : []),
   ];
   const [toolId, setToolId] = useState(tools[0]?.id);
   // Text target: the first field that has text, else the first field.
@@ -1637,7 +1742,7 @@ function AdjustPanel({ fields, sliders, slide, onSlider, onTextStyle }) {
     isSet = slide[tool.key] !== undefined;
     value = slide[tool.key] ?? tool.default;
     label = `${value}${tool.unit ?? ''}`;
-  } else {
+  } else if (!tool.isColor) {
     const cur = styles[fieldKey]?.[tool.id];
     isSet = cur !== undefined;
     value = cur ?? tool.base;
@@ -1649,6 +1754,15 @@ function AdjustPanel({ fields, sliders, slide, onSlider, onTextStyle }) {
   const round = (v) => Math.round(v / step) * step;
   const clamp = (v) => Math.min(max, Math.max(min, +round(v).toFixed(4)));
 
+  const setColor = (hex) => {
+    const next = { ...styles };
+    const fs = { ...(next[fieldKey] ?? {}) };
+    if (hex) fs.color = hex;
+    else delete fs.color;
+    if (Object.keys(fs).length) next[fieldKey] = fs;
+    else delete next[fieldKey];
+    onTextStyle(Object.keys(next).length ? next : undefined);
+  };
   const set = (raw) => {
     const v = raw === undefined ? undefined : clamp(raw);
     if (tool.kind === 'slider') {
@@ -1697,13 +1811,18 @@ function AdjustPanel({ fields, sliders, slide, onSlider, onTextStyle }) {
                 className={`chip ${f.key === fieldKey ? 'on' : ''}`}
                 onClick={() => setFieldKey(f.key)}
               >
+                {tool.isColor && <i className="chip-swatch" style={{ background: styles[f.key]?.color ?? 'transparent' }} />}
                 {f.label.replace(/\s*\(.*\)$/, '')}
-                {styles[f.key]?.[tool.id] !== undefined && <i className="chip-dot" />}
+                {!tool.isColor && styles[f.key]?.[tool.id] !== undefined && <i className="chip-dot" />}
               </button>
             ))}
           </div>
         )}
 
+        {tool.isColor ? (
+          <ColorPicker value={styles[fieldKey]?.color} brand={brand} onChange={setColor} />
+        ) : (
+        <>
         <div className="adj-dial">
           <button className="btn-icon adj-step" aria-label="줄이기" onClick={() => set(value - step)} disabled={value <= min}>
             <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M5 12h14" /></svg>
@@ -1729,6 +1848,8 @@ function AdjustPanel({ fields, sliders, slide, onSlider, onTextStyle }) {
           <span className="adj-value">{tool.label} <b>{label}</b></span>
           <button className="link" onClick={() => set(undefined)} disabled={!isSet}>기본값으로</button>
         </div>
+        </>
+        )}
       </div>
     </div>
   );

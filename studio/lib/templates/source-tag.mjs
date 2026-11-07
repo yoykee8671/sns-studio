@@ -18,20 +18,6 @@ const posOption = {
   choices: [[undefined, '왼쪽 위'], ['tr', '오른쪽 위'], ['bl', '왼쪽 아래'], ['br', '오른쪽 아래']],
   hidden: (slide) => slide.sourceShow === 'off',
 };
-const colorOption = {
-  key: 'sourceColor',
-  label: '출처 색',
-  choices: [[undefined, '자동'], ['white', '흰색'], ['black', '검정'], ['point', '포인트색'], ['highlight', '형광펜색']],
-  hidden: (slide) => slide.sourceShow === 'off',
-};
-/** CSS color for slide.sourceColor (brand point/highlight follow 계정별 스타일), or null = template's. */
-function sourceColor(slide, brand) {
-  const c = {
-    white: '#ffffff', black: '#111111', point: brand?.colors?.blue, highlight: brand?.colors?.lime,
-  }[slide.sourceColor];
-  return /^#[0-9a-fA-F]{3,8}$/.test(c ?? '') ? c : null;
-}
-
 const sourceField = {
   key: 'source',
   label: '출처',
@@ -43,11 +29,11 @@ function tag(slide, brand, onPhoto) {
   const pos = POSITIONS[slide.sourcePos] ?? POSITIONS.tl;
   // On full-bleed photos (지식형) keep the old line's shadow so it reads on bright pictures.
   const shadow = onPhoto && slide.shadow !== 'off' ? 'text-shadow: 0 1px 8px rgba(0,0,0,.45);' : '';
-  const color = sourceColor(slide, brand);
-  const tint = color ? `color: ${color}; opacity: 1;` : '';
+  // A color picked in 세부 조정 shows at full strength (the default line is slightly muted).
+  const solid = /^#[0-9a-fA-F]{6}$/.test(slide.textStyle?.source?.color ?? '') ? 'opacity: 1;' : '';
   return `<style>
   .u-source { position: absolute; ${pos}; z-index: 6; max-width: 78%; font-size: 21px; line-height: 1.3;
-    font-weight: 500; opacity: .82; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; ${shadow} ${tint} }
+    font-weight: 500; opacity: .82; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; ${shadow} ${solid} }
 </style>
 <div class="u-source" data-field="source" data-max-lines="1" data-label="출처" style="${fieldStyle(slide, 'source', 21)}">${renderMarkup(slide.source, brandPalette(brand))}</div>`;
 }
@@ -60,15 +46,9 @@ export function withSource(key, mod) {
   if (native) {
     return {
       ...mod,
-      meta: { ...meta, options: [showOption, colorOption, ...(meta.options ?? [])] },
-      renderSlide: (o) => {
-        const html = mod.renderSlide(o.slide.sourceShow === 'off' ? { ...o, slide: { ...o.slide, [native]: '' } } : o);
-        const color = sourceColor(o.slide, o.brand);
-        if (!color) return html;
-        const at = html.lastIndexOf('</head>');
-        const css = `<style>[data-field="${native}"] { color: ${color} !important; opacity: 1 !important; }</style>`;
-        return at > 0 ? html.slice(0, at) + css + html.slice(at) : html;
-      },
+      meta: { ...meta, options: [showOption, ...(meta.options ?? [])] },
+      renderSlide: (o) =>
+        mod.renderSlide(o.slide.sourceShow === 'off' ? { ...o, slide: { ...o.slide, [native]: '' } } : o),
     };
   }
   const own = OWN_FIELD[key];
@@ -77,7 +57,7 @@ export function withSource(key, mod) {
     meta: {
       ...meta,
       fields: own ? meta.fields : [...meta.fields, sourceField],
-      options: [...(meta.options ?? []), showOption, posOption, colorOption],
+      options: [...(meta.options ?? []), showOption, posOption],
     },
     renderSlide: (o) => {
       const html = mod.renderSlide(own ? { ...o, slide: { ...o.slide, [own]: '' } } : o);

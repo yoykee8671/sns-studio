@@ -1,6 +1,6 @@
 // 요소 옮기기: per-slide position/size overrides for a template's text blocks and photo
 // box, applied the same way in the editor preview and the export (it's plain CSS).
-// slide.layout = { [field key | 'media']: { x?, y?, w?, h? } } — x/y are an offset from
+// slide.arrange = { [field key | 'media']: { x?, y?, w?, h? } } — x/y are an offset from
 // the template's own position (CSS `translate`, so it never fights the template's
 // transforms or flow), w/h resize the photo box.
 
@@ -12,7 +12,10 @@ const num = (v, min, max) => {
 
 export function layoutCss(slide) {
   const rules = [];
-  for (const [key, v] of Object.entries(slide?.layout ?? {})) {
+  // (Stored as slide.layout for a few hours before curation-frame's own `layout` option
+  // was noticed; an object there is read as arrange.)
+  const arrange = slide?.arrange ?? (slide?.layout && typeof slide.layout === 'object' ? slide.layout : {});
+  for (const [key, v] of Object.entries(arrange)) {
     if (!KEY.test(key) || !v || typeof v !== 'object') continue;
     const sel = key === 'media' ? '[data-media-box]' : `[data-field="${key}"]`;
     const parts = [];

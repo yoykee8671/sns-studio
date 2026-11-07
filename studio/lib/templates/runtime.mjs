@@ -379,7 +379,8 @@ export function slideRuntime({ toneThreshold = 0.62 } = {}) {
 
 /**
  * Per-field typography overrides from the editor's 글자 세부 조정 panel.
- * slide.textStyle[key] = { size?: px delta from the template base, ls?: em, lh?: unitless }.
+ * slide.textStyle[key] = { size?: px delta from the template base, ls?: em, lh?: unitless,
+ *   color?: '#rrggbb' }.
  * Returns CSS text for a style attribute ('' when the field has no overrides).
  */
 export function fieldStyle(slide, key, basePx) {
@@ -398,6 +399,7 @@ export function fieldStyle(slide, key, basePx) {
   if (ls !== null) parts.push(`letter-spacing:${ls}em`);
   const lh = s.lh !== undefined ? num(s.lh, 0.8, 3) : null;
   if (lh !== null) parts.push(`line-height:${lh}`);
+  if (/^#[0-9a-fA-F]{6}$/.test(s.color ?? '')) parts.push(`color:${s.color}`);
   return parts.length ? `${parts.join(';')};` : '';
 }
 

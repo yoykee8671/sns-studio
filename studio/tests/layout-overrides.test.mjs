@@ -5,7 +5,7 @@ import { layoutCss } from '../lib/templates/layout-overrides.mjs';
 test('layout overrides become CSS; bad keys and values are dropped or clamped', () => {
   const css = layoutCss({
     focus: '20% 70%',
-    layout: {
+    arrange: {
       title: { x: 12.4, y: -30 },
       media: { w: 600, h: 10, x: 99999 },
       'x"]{}body{': { x: 5 },
@@ -19,4 +19,7 @@ test('layout overrides become CSS; bad keys and values are dropped or clamped', 
   assert.ok(!css.includes('body{'));
   assert.ok(!css.includes('data-field="body"'));
   assert.equal(layoutCss({}), '');
+  // curation-frame's own string option is not an arrangement; the first version's object is.
+  assert.equal(layoutCss({ layout: 'overlay' }), '');
+  assert.match(layoutCss({ layout: { title: { x: 5 } } }), /translate: 5px 0px/);
 });
