@@ -10,7 +10,7 @@ import TemplateGallery from './template-gallery';
 
 const CAPTION_LIMIT = 2200;
 const HASHTAG_LIMIT = 30;
-const THUMB_W = 84;
+const THUMB_W = 60;
 const PRESET_KEY = 'sns-studio-sticker-presets';
 const STATUS = { draft: '작성 중', approved: '승인', published: '발행됨' };
 const FORMAT_LABEL = { carousel: '캐러셀', single: '단일 피드', reel: '릴스' };
@@ -96,6 +96,15 @@ const reorder = (arr, from, to) => {
   return next;
 };
 
+const Icon = ({ d, size = 20 }) => (
+  <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{d}</svg>
+);
+const CHEVRON_LEFT = <path d="M15 18l-6-6 6-6" />;
+const CHEVRON_RIGHT = <path d="M9 18l6-6-6-6" />;
+const MORE = <><circle cx="5" cy="12" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /></>;
+const PLUS = <path d="M12 5v14M5 12h14" />;
+
 const loadPresets = () => {
   try {
     return JSON.parse(localStorage.getItem(PRESET_KEY) ?? '[]');
@@ -128,6 +137,7 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
   const [library, setLibrary] = useState({ layouts: [], hidden: [] }); // 내 템플릿 + hidden built-ins
   const [dragging, setDragging] = useState(null); // { from, to } while a thumbnail is dragged
   const [uploadNote, setUploadNote] = useState(null); // "2/5" while a batch uploads
+  const [menuOpen, setMenuOpen] = useState(false); // phone: the "더보기" action sheet
 
   const mainFrame = useRef(null);
   const thumbFrames = useRef([]);
@@ -263,7 +273,9 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
     if (!stageRef.current) return;
     const ro = new ResizeObserver(([entry]) => {
       const { width, height } = entry.contentRect;
-      setScale(Math.min((width - 32) / size.width, (height - 48) / size.height));
+      const arrows = window.innerWidth > 920 ? 120 : 0; // prev/next buttons beside the preview (PC)
+      const below = window.innerWidth > 920 ? 96 : 52; // ratio switch + hint under it
+      setScale(Math.max(0.1, Math.min((width - 32 - arrows) / size.width, (height - below) / size.height)));
     });
     ro.observe(stageRef.current);
     return () => ro.disconnect();
@@ -650,7 +662,7 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
     <div className="editor">
       <header className="topbar">
         <div className="topbar-left">
-          <Link href={isLayout ? '/#my-templates' : '/'} className="back">←</Link>
+          <Link href={isLayout ? '/#my-templates' : '/'} className="back" aria-label="목록으로"><Icon d={CHEVRON_LEFT} size={22} /></Link>
           <div className="topbar-title">
             <div className="crumb">
               {isLayout ? '내 템플릿 편집 · 미리보기 계정 ' : ''}@{brandId} · {meta.label} · {FORMAT_LABEL[post.format] ?? post.format}
@@ -689,8 +701,11 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
             )}
           </div>
         </div>
+        <button className="more-btn btn-icon" aria-label="더보기" onClick={() => setMenuOpen(true)}>
+          <Icon d={MORE} size={22} />
+        </button>
         <div className="actions">
-          <button className="topbar-danger" onClick={() => setModal({ kind: 'delete' })} disabled={!!busy}>
+          <button className="btn-plain topbar-danger" onClick={() => setModal({ kind: 'delete' })} disabled={!!busy}>
             삭제
           </button>
           {isLayout ? (
@@ -699,10 +714,10 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
             </button>
           ) : (
           <>
-          <button onClick={save} disabled={!!busy}>
+          <button className="btn-plain" onClick={save} disabled={!!busy}>
             {busy === 'save' ? '저장 중…' : '임시 저장'}
           </button>
-          <button onClick={() => setModal({ kind: 'saveLayout', name: '' })} disabled={!!busy}>
+          <button className="btn-plain" onClick={() => setModal({ kind: 'saveLayout', name: '' })} disabled={!!busy}>
             템플릿으로 저장
           </button>
           <div className="split">
@@ -715,14 +730,14 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
             </button>
           </div>
           <button onClick={() => exportAs('svg')} disabled={!!busy || blocked}>
-            {busy === 'svg' ? '만드는 중…' : 'Figma로 수정하기'}
+            {busy === 'svg' ? '만드는 중…' : 'Figma로 수정'}
           </button>
           <button
             className="primary"
             disabled={!!busy || blocked || post.status === 'published'}
             onClick={() => setModal({ kind: ctx.publish.ready ? 'confirm' : 'setup' })}
           >
-            {busy === 'publish' ? '발행 중…' : post.status === 'published' ? '발행 완료' : '이대로 발행하기'}
+            {busy === 'publish' ? '발행 중…' : post.status === 'published' ? '발행 완료' : '발행하기'}
           </button>
           </>
           )}
@@ -736,60 +751,17 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
       )}
 
       <div className={`workspace ${blocked ? 'with-banner' : ''}`}>
-        <nav className="thumbs" aria-label="장 목록 (끌어서 순서 변경)">
-          {post.slides.map((s, i) => (
-            <button
-              key={i}
-              ref={(el) => (thumbEls.current[i] = el)}
-              className={[
-                'thumb',
-                i === sel && 'active',
-                dragging?.from === i && 'dragging',
-                dragging && dragging.to === i && dragging.from !== i && (dragging.from < i ? 'drop-after' : 'drop-before'),
-              ].filter(Boolean).join(' ')}
-              onPointerDown={(e) => onThumbPointerDown(e, i)}
-              onClick={() => {
-                if (dragRef.current?.eatClick) return;
-                setSel(i);
-              }}
-              aria-label={`${i + 1}장`}
-              title="끌어서 순서를 바꿀 수 있어요"
-            >
-              {post.slides.length > 1 && <span className="drag-handle" aria-hidden>⠿</span>}
-              <div className="thumb-frame" style={{ width: THUMB_W, height: size.height * thumbScale }}>
-                <iframe
-                  ref={(el) => (thumbFrames.current[i] = el)}
-                  srcDoc={thumbHtml[i]}
-                  title={`${i + 1}장 미리보기`}
-                  tabIndex={-1}
-                  style={{ width: size.width, height: size.height, transform: `scale(${thumbScale})` }}
-                />
-              </div>
-              <span className="thumb-num">
-                {i + 1}
-                {mediaOf(brandId, postId, s).type === 'video' && ' ▶'}
-                {reports[i]?.issues.length > 0 && <span className="dot" title="QA 경고" />}
-              </span>
-            </button>
-          ))}
-          {closingUrl && (
-            <button
-              className={`thumb ${onClosing ? 'active' : ''}`}
-              onClick={() => setSel(post.slides.length)}
-              aria-label="끝장"
-            >
-              <div className="thumb-frame" style={{ width: THUMB_W, height: size.height * thumbScale }}>
-                <img className="thumb-closing" src={closingUrl} alt="끝장" />
-              </div>
-              <span className="thumb-num">끝</span>
-            </button>
-          )}
-          {post.format !== 'reel' && post.format !== 'single' && post.slides.length < maxSlides && (
-            <button className="add-slide" onClick={() => setGallery('add')} disabled={busy === 'upload'}>+ 장 추가</button>
-          )}
-        </nav>
 
         <section className="stage" ref={stageRef}>
+          <div className="stage-row">
+          <button
+            className="btn-icon stage-nav"
+            aria-label="이전 장"
+            disabled={sel === 0}
+            onClick={() => setSel(Math.max(0, sel - 1))}
+          >
+            <Icon d={CHEVRON_LEFT} size={18} />
+          </button>
           <div className="stage-frame" style={{ width: size.width * scale, height: size.height * scale }}>
             {onClosing ? (
               <img src={closingUrl} alt="끝장" style={{ width: size.width * scale, height: size.height * scale, objectFit: 'cover', display: 'block' }} />
@@ -801,6 +773,15 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
                 style={{ width: size.width, height: size.height, transform: `scale(${scale})` }}
               />
             )}
+          </div>
+          <button
+            className="btn-icon stage-nav"
+            aria-label="다음 장"
+            disabled={sel >= post.slides.length - (closingUrl ? 0 : 1)}
+            onClick={() => setSel(Math.min(post.slides.length - (closingUrl ? 0 : 1), sel + 1))}
+          >
+            <Icon d={CHEVRON_RIGHT} size={18} />
+          </button>
           </div>
           <p className="stage-hint">
             {onClosing
@@ -821,13 +802,70 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
                   </button>
                 ))}
               </div>
-              <span className="note">{size.width}×{size.height}</span>
+              <span className="note">
+                {onClosing ? '끝장' : `${sel + 1} / ${post.slides.length}장`} · {size.width}×{size.height}
+              </span>
             </div>
           )}
         </section>
 
         <aside className="panel">
-          <div className="tabs">
+          <div className="panel-head">
+          <nav className="thumbs" aria-label="장 목록 (끌어서 순서 변경)">
+            {post.slides.map((s, i) => (
+              <button
+                key={i}
+                ref={(el) => (thumbEls.current[i] = el)}
+                className={[
+                  'thumb',
+                  i === sel && 'active',
+                  dragging?.from === i && 'dragging',
+                  dragging && dragging.to === i && dragging.from !== i && (dragging.from < i ? 'drop-after' : 'drop-before'),
+                ].filter(Boolean).join(' ')}
+                onPointerDown={(e) => onThumbPointerDown(e, i)}
+                onClick={() => {
+                  if (dragRef.current?.eatClick) return;
+                  setSel(i);
+                }}
+                aria-label={`${i + 1}장`}
+                title="끌어서 순서를 바꿀 수 있어요"
+              >
+                {post.slides.length > 1 && <span className="drag-handle" aria-hidden>⠿</span>}
+                <div className="thumb-frame" style={{ width: THUMB_W, height: size.height * thumbScale }}>
+                  <iframe
+                    ref={(el) => (thumbFrames.current[i] = el)}
+                    srcDoc={thumbHtml[i]}
+                    title={`${i + 1}장 미리보기`}
+                    tabIndex={-1}
+                    style={{ width: size.width, height: size.height, transform: `scale(${thumbScale})` }}
+                  />
+                </div>
+                <span className="thumb-num">
+                  {i + 1}
+                  {mediaOf(brandId, postId, s).type === 'video' && ' ▶'}
+                  {reports[i]?.issues.length > 0 && <span className="dot" title="QA 경고" />}
+                </span>
+              </button>
+            ))}
+            {closingUrl && (
+              <button
+                className={`thumb ${onClosing ? 'active' : ''}`}
+                onClick={() => setSel(post.slides.length)}
+                aria-label="끝장"
+              >
+                <div className="thumb-frame" style={{ width: THUMB_W, height: size.height * thumbScale }}>
+                  <img className="thumb-closing" src={closingUrl} alt="끝장" />
+                </div>
+                <span className="thumb-num">끝</span>
+              </button>
+            )}
+            {post.format !== 'reel' && post.format !== 'single' && post.slides.length < maxSlides && (
+              <button className="add-slide" onClick={() => setGallery('add')} disabled={busy === 'upload'}>
+                <Icon d={PLUS} size={16} />장 추가
+              </button>
+            )}
+          </nav>
+          <div className="tabs" role="tablist">
             <button className={tab === 'slide' ? 'on' : ''} onClick={() => setTab('slide')}>
               {onClosing ? '끝장' : `${sel + 1}장 편집`}
             </button>
@@ -841,6 +879,7 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
                 캡션
               </button>
             )}
+          </div>
           </div>
 
           {tab === 'slide' && onClosing && (
@@ -870,9 +909,12 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
               {templateChoices.length > 1 && (
                 <div className="field">
                   <label>이 장의 템플릿</label>
-                  <div className="slide-tools">
-                    <span className="badge">{sMeta.label}</span>
-                    <button onClick={() => setGallery('switch')}>템플릿 바꾸기…</button>
+                  <div className="card row-card">
+                    <div className="row-card-text">
+                      <strong>{sMeta.label}</strong>
+                      <span className="note">{{ cover: '표지', inner: '속지', any: '어디든', last: '마지막 장' }[sMeta.role] ?? ''}</span>
+                    </div>
+                    <button onClick={() => setGallery('switch')}>템플릿 바꾸기</button>
                   </div>
                   <p className="note">장마다 다른 템플릿을 쓸 수 있어요. 표지는 1장에 어울리는 템플릿을 골라주세요.</p>
                 </div>
@@ -1104,6 +1146,79 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
         </aside>
       </div>
 
+      {/* Phone only (CSS): fixed bottom bar with the main actions. */}
+      <div className="mobile-bar">
+        {isLayout ? (
+          <button className="primary" onClick={save} disabled={!!busy}>
+            {busy === 'save' ? '저장 중…' : '템플릿 저장'}
+          </button>
+        ) : (
+          <>
+            <button onClick={save} disabled={!!busy}>{busy === 'save' ? '저장 중…' : '저장'}</button>
+            <button onClick={() => exportAs(format)} disabled={!!busy || blocked}>
+              {busy === format ? '만드는 중…' : '내려받기'}
+            </button>
+            <button
+              className="primary"
+              disabled={!!busy || blocked || post.status === 'published'}
+              onClick={() => setModal({ kind: ctx.publish.ready ? 'confirm' : 'setup' })}
+            >
+              {busy === 'publish' ? '발행 중…' : post.status === 'published' ? '발행 완료' : '발행하기'}
+            </button>
+          </>
+        )}
+      </div>
+
+      {menuOpen && (
+        <div className="modal-back sheet-back" onClick={() => setMenuOpen(false)}>
+          <div className="sheet" role="menu" onClick={(e) => e.stopPropagation()}>
+            {!isLayout && (
+              <>
+                <div className="sheet-group">
+                  <label className="sheet-row">
+                    <span>상태</span>
+                    <select
+                      value={post.status}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setMenuOpen(false);
+                        if (v === 'published') setModal({ kind: 'markPublished' });
+                        else update((p) => (p.status = v));
+                      }}
+                    >
+                      {Object.entries(STATUS).map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+                    </select>
+                  </label>
+                  <label className="sheet-row">
+                    <span>내려받기 형식</span>
+                    <select value={format} onChange={(e) => setFormat(e.target.value)}>
+                      <option value="png">PNG</option>
+                      <option value="jpg">JPG</option>
+                    </select>
+                  </label>
+                </div>
+                <div className="sheet-group">
+                  <button className="sheet-row" onClick={() => { setMenuOpen(false); setModal({ kind: 'saveLayout', name: '' }); }} disabled={!!busy}>
+                    템플릿으로 저장
+                  </button>
+                  <button className="sheet-row" onClick={() => { setMenuOpen(false); exportAs('svg'); }} disabled={!!busy || blocked}>
+                    Figma로 수정 (SVG 받기)
+                  </button>
+                </div>
+              </>
+            )}
+            <div className="sheet-group">
+              <button className="sheet-row danger" onClick={() => { setMenuOpen(false); setModal({ kind: 'delete' }); }} disabled={!!busy}>
+                {isLayout ? '템플릿 삭제' : '게시물 삭제'}
+              </button>
+            </div>
+            <div className="sheet-group">
+              <button className="sheet-row strong" onClick={() => setMenuOpen(false)}>닫기</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {toast && <div className={`toast toast-${toast.kind}`}>{toast.text}</div>}
 
       {gallery && (
@@ -1334,6 +1449,7 @@ function MediaRow({ slide, status, accept, multiple, busy, progress, onUpload, o
   return (
     <div className="field photo-row">
       <label>원본 사진·영상</label>
+      <div className="card">
       <div className="photo-line">
         {name ? <code title={name}>{name}</code> : <span className="note">아직 없어요</span>}
         {name && <span className={`pill pill-${tone}`}>{label}</span>}
@@ -1374,6 +1490,7 @@ function MediaRow({ slide, status, accept, multiple, busy, progress, onUpload, o
           <p className="note">미리보기에서 사진을 드래그하면 보이는 위치를 옮길 수 있어요.</p>
         </>
       )}
+      </div>
     </div>
   );
 }

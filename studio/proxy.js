@@ -18,6 +18,8 @@ export async function proxy(req) {
   if (pathname === '/login' || pathname === '/api/login') return NextResponse.next();
   // Staged publish files must be fetchable by Instagram's servers (random, short-lived URLs).
   if (pathname.startsWith('/p/')) return NextResponse.next();
+  // UI web fonts are needed by the login page itself (public, licensed OFL files).
+  if (pathname.startsWith('/fonts/ui/')) return NextResponse.next();
 
   if (req.cookies.get(COOKIE)?.value === (await tokenOf(password))) return NextResponse.next();
 
