@@ -16,6 +16,7 @@ import * as innerPhotoSplit from './inner-photo-split.mjs';
 import * as quoteDark from './quote-dark.mjs';
 import * as quoteSerif from './quote-serif.mjs';
 import * as lastFollow from './last-follow.mjs';
+import * as closingImage from './closing-image.mjs';
 import { withSource } from './source-tag.mjs';
 
 const MODULES = {
@@ -36,6 +37,7 @@ const MODULES = {
   'quote-dark': quoteDark,
   'quote-serif': quoteSerif,
   'last-follow': lastFollow,
+  'closing-image': closingImage,
 };
 
 // Every template gets the shared 출처 field + show/hide/position options (source-tag.mjs).
@@ -45,6 +47,11 @@ export const TEMPLATES = Object.fromEntries(
 
 // Gallery grouping/order: cover → any → inner → last.
 export const ROLE_ORDER = ['cover', 'any', 'inner', 'last'];
+
+// A template's cover look (big title, logo) normally follows the slide position — the
+// first slide is the cover — but slide.look ('cover' | 'inner') overrides it, so any
+// template works on any slide.
+export { isCoverSlide } from './runtime.mjs';
 
 export function getTemplate(name) {
   const t = TEMPLATES[name];

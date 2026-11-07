@@ -232,6 +232,16 @@ export function fieldStyle(slide, key, basePx) {
   return parts.length ? `${parts.join(';')};` : '';
 }
 
+/** Cover look: slide.look ('cover' | 'inner') wins, else the first slide is the cover. */
+export const isCoverSlide = (slide, index) =>
+  slide?.look === 'cover' ? true : slide?.look === 'inner' ? false : index === 0;
+
+export const LOOK_OPTION = {
+  key: 'look',
+  label: '표지/속지 스타일',
+  choices: [[undefined, '자동 (첫 장이면 표지)'], ['cover', '표지'], ['inner', '속지']],
+};
+
 export const escapeHtml = (s = '') =>
   String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 

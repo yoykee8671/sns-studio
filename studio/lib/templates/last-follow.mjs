@@ -1,7 +1,7 @@
 // 마지막 장: 팔로우 카드 — closing line, optional background photo, and an
 // Instagram-style profile chip (avatar + handle + 팔로우 pill). role 'last'.
 import { renderSticker, stickerCss } from '../stickers.mjs';
-import { slideRuntime, mediaTag, fieldStyle } from './runtime.mjs';
+import { slideRuntime, mediaTag, fieldStyle, escapeHtml } from './runtime.mjs';
 import { renderMarkup, brandPalette } from './markup.mjs';
 import { feedSizeFor } from './sizes.mjs';
 import { webFontCss } from './fonts.mjs';
@@ -74,6 +74,7 @@ export function renderSlide({ brand, post, slide, mediaSrc, mediaType, logoSvg, 
     display: grid; place-items: center; overflow: hidden;
   }
   .avatar svg { display: block; width: 86%; height: auto; }
+  .avatar img { display: block; width: 100%; height: 100%; object-fit: cover; }
   .who { min-width: 0; display: grid; gap: 4px; }
   .who .handle { font-weight: 800; font-size: 30px; letter-spacing: -0.01em; }
   .who .name { font-size: 24px; opacity: .7; white-space: pre; }
@@ -90,7 +91,7 @@ export function renderSlide({ brand, post, slide, mediaSrc, mediaType, logoSvg, 
     <div class="title" data-field="title" data-max-lines="3" data-label="마무리 문구" style="${fieldStyle(slide, 'title', 62)}">${renderMarkup(slide.title ?? '', palette)}</div>
     ${slide.sub ? `<div class="sub" data-field="sub" data-max-lines="3" data-label="짧은 설명" style="${fieldStyle(slide, 'sub', 29)}">${renderMarkup(slide.sub, palette)}</div>` : ''}
     <div class="chip" data-avoid="bottom">
-      <div class="avatar">${logoSvg}</div>
+      <div class="avatar">${brand.avatarSrc ? `<img src="${escapeHtml(brand.avatarSrc)}" alt="">` : logoSvg}</div>
       <div class="who">
         <div class="handle">${handle}</div>
         ${name ? `<div class="name" data-field="name" data-max-lines="1" data-label="프로필 이름" style="${fieldStyle(slide, 'name', 24)}">${renderMarkup(name, palette)}</div>` : ''}

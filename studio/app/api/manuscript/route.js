@@ -47,7 +47,6 @@ export async function POST(req) {
     renumberSlides(slides);
     const post = await createPost({
       brand: brandId,
-      slug: slug || 'manuscript',
       template: slides[0].template,
       format: 'carousel',
       ratio: ratio ?? DEFAULT_RATIO,

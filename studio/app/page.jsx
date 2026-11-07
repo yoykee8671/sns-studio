@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import {
-  listPosts, listBrands, mediaUsage, loadBrand, expirePublishedMedia, MEDIA_RETENTION_DAYS,
+  listPosts, listBrands, mediaUsage, loadBrand, expirePublishedMedia, MEDIA_RETENTION_DAYS, clientBrand,
 } from '@/lib/store.mjs';
+import { hasInstagram } from '@/lib/instagram.mjs';
 import { listLayouts, readHidden } from '@/lib/layouts.mjs';
 import { TEMPLATES, ROLE_ORDER } from '@/lib/templates/index.mjs';
 import { loadSeries } from '@/lib/series.mjs';
@@ -12,7 +13,6 @@ import HomeTools from './home-tools';
 export const dynamic = 'force-dynamic';
 
 const STATUS = { draft: '작성 중', approved: '승인', published: '발행됨' };
-const TYPE = { knowledge: '지식형', curation: '디깅형' };
 const FORMAT = { carousel: '캐러셀', single: '단일', reel: '릴스' };
 
 const fmtMB = (bytes) => `${(bytes / 1024 / 1024).toFixed(bytes > 104857600 ? 0 : 1)}MB`;
@@ -65,6 +65,8 @@ export default async function Home({ searchParams }) {
           body: full.fonts.body,
         },
         overrides: full.style ?? {},
+        avatarSrc: clientBrand(full).avatarSrc ?? null,
+        igReady: hasInstagram(full),
       };
     }),
   );
@@ -108,7 +110,7 @@ export default async function Home({ searchParams }) {
               <strong className="post-title">{p.title}</strong>
               <span className="post-meta">
                 {p.series && <span className="badge badge-series">{String(p.series.no).padStart(3, '0')}호</span>}{' '}
-                {TYPE[p.contentType] ?? p.contentType} · {FORMAT[p.format] ?? p.format} {p.slides}장 ·{' '}
+                {FORMAT[p.format] ?? p.format} {p.slides}장 ·{' '}
                 <span className={`badge badge-${p.status}`}>{STATUS[p.status] ?? p.status}</span>
               </span>
               <span className="post-dates">

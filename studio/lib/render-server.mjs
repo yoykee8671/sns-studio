@@ -8,9 +8,10 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import ffmpegPath from 'ffmpeg-static';
 import { chromium } from 'playwright-core';
-import { ROOT, loadBrand, loadLogoSvg, imageStatus, mediaFile, mediaTypeOf, closingImage, resolveAsset } from './store.mjs';
+import { ROOT, loadBrand, loadLogoSvg, imageStatus, mediaFile, mediaTypeOf } from './store.mjs';
 import { exportSlideSvg } from './svg-export.mjs';
 import { getTemplate, resolveTemplate } from './templates/index.mjs';
+import { needsPermission } from './post-rules.mjs';
 import { WEB_FONTS } from './templates/fonts.mjs';
 
 const run = promisify(execFile);
@@ -69,13 +70,6 @@ async function composeVideo({ video, overlayPng, box, fit, baseColor, size, out 
   );
 }
 
-// The closing slide is just the image, full-bleed — no gradient, no text, no logo.
-const closingHtml = (src, { width, height }) => `<!doctype html>
-<html><head><meta charset="utf-8"><style>
-  * { margin: 0; padding: 0; }
-  html, body { width: ${width}px; height: ${height}px; overflow: hidden; background: #000; }
-  img { width: 100%; height: 100%; object-fit: cover; display: block; }
-</style></head><body><img src="${src}"></body></html>`;
 
 // Two environments:
 // - Docker (Mac mini server): CHROME_PATH points at system chromium. Low-memory flags keep
@@ -107,7 +101,7 @@ async function launchBrowser() {
 /**
  * @param {object} post
  * @param {{ format: 'png'|'jpg'|'svg', quality?: number, allowChanged?: boolean, only?: number[] }} opts
- *   only = 0-based slide indices to render (skips the closing slide)
+ *   only = 0-based slide indices to render
  * @returns {Promise<{ files: {name: string, data: Buffer, type: string}[], reports: object[] }>}
  */
 export async function renderPost(post, { format, quality = 92, allowChanged = false, only = null }) {
@@ -115,6 +109,8 @@ export async function renderPost(post, { format, quality = 92, allowChanged = fa
   const { meta } = getTemplate(post.template);
   const size = meta.sizeFor(post);
   const logoSvg = await loadLogoSvg(brand);
+  // setContent() pages have no base URL: the profile photo goes in as a data URL.
+  if (brand.avatarFile) brand.avatarSrc = await dataUrl(brand.avatarFile);
 
   const status = await imageStatus(brand, post);
   const bad = status.flatMap((s, i) => (s.state === 'changed' || s.state === 'missing' ? [`${i + 1}장 (${s.state})`] : []));
@@ -181,17 +177,6 @@ export async function renderPost(post, { format, quality = 92, allowChanged = fa
       files.push({ name: `${name}.mp4`, data: await readFile(out), type: 'video/mp4' });
     }
 
-    // Append the fixed closing slide to full carousel renders (not SVG sets or single-slide pulls).
-    if (!only && format !== 'svg' && post.format === 'carousel') {
-      const rel = await closingImage(brand);
-      if (rel) {
-        const src = await dataUrl(resolveAsset(brand, rel));
-        await page.setContent(closingHtml(src, size), { waitUntil: 'load' });
-        const name = String(post.slides.length + 1).padStart(2, '0');
-        const data = await page.screenshot(format === 'jpg' ? { type: 'jpeg', quality } : { type: 'png' });
-        files.push({ name: `${name}.${format}`, data, type: format === 'jpg' ? 'image/jpeg' : 'image/png' });
-      }
-    }
     return { files, reports };
   } finally {
     await browser.close();
@@ -202,10 +187,10 @@ export async function renderPost(post, { format, quality = 92, allowChanged = fa
 export const captionText = (post) =>
   `${post.caption}\n\n${post.hashtags.map((t) => `#${t.replace(/^#/, '')}`).join(' ')}`.trim() + '\n';
 
-/** 디깅형 posts can only leave the app once the original creator has agreed. */
+/** Posts that name an original (link or account) leave the app only once it agreed. */
 export function permissionError(post) {
-  if (post.contentType === 'curation' && post.source?.permission !== 'granted') {
-    return '원작자 허락이 확인되지 않았어요. 소재·출처 탭에서 허락 상태를 "허락 받음"으로 바꿔주세요.';
+  if (needsPermission(post)) {
+    return '원작자 허락이 확인되지 않았어요. 출처·허락 탭에서 허락 상태를 "허락 받음"으로 바꿔주세요.';
   }
   return null;
 }

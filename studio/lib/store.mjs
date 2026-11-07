@@ -6,7 +6,7 @@ import { existsSync } from 'node:fs';
 import { readFile, writeFile, mkdir, readdir, copyFile, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { STICKER_TYPES, normalizeSticker } from './stickers.mjs';
-import { resolveTemplate } from './templates/index.mjs';
+import { resolveTemplate, TEMPLATES } from './templates/index.mjs';
 import { stripMarkup } from './templates/markup.mjs';
 import { isFontChoice } from './templates/fonts.mjs';
 
@@ -42,7 +42,45 @@ export async function loadBrand(brandId) {
   const fonts = { ...brand.fonts };
   if (style.fonts?.headline) fonts.headline = style.fonts.headline;
   if (style.fonts?.body) fonts.body = style.fonts.body;
-  return { ...brand, colors, fonts, style, assetPath: path.resolve(ROOT, brand.assetDir) };
+  const avatar = await findBrandAvatar(brandId);
+  return {
+    ...brand, colors, fonts, style, assetPath: path.resolve(ROOT, brand.assetDir),
+    ...(avatar ? { avatarFile: avatar.file, avatarVersion: avatar.version } : {}),
+  };
+}
+
+/** The brand as sent to the browser: avatar as a versioned URL, no server paths. */
+export function clientBrand(brand) {
+  const { avatarFile, avatarVersion, assetPath, ...rest } = brand;
+  return avatarFile ? { ...rest, avatarSrc: `/api/brand-style/${brand.id}/avatar?v=${avatarVersion}` } : rest;
+}
+
+// ---- 계정 프로필 사진 (팔로우 카드 등) — <CONTENT_ROOT>/_brand/<brand>/avatar.<ext> ----
+
+const AVATAR_EXT = ['.jpg', '.png', '.webp'];
+const avatarDir = (brandId) => path.join(CONTENT_ROOT, '_brand', brandId);
+
+async function findBrandAvatar(brandId) {
+  for (const ext of AVATAR_EXT) {
+    const file = path.join(avatarDir(brandId), `avatar${ext}`);
+    const st = await stat(file).catch(() => null);
+    if (st) return { file, version: Math.round(st.mtimeMs) };
+  }
+  return null;
+}
+
+/** Saves the account's profile photo (uploaded, or fetched from Instagram). */
+export async function saveBrandAvatar(brandId, data, ext) {
+  assertId(brandId);
+  if (!AVATAR_EXT.includes(ext)) throw new Error('JPG·PNG·WEBP 사진만 쓸 수 있어요.');
+  await deleteBrandAvatar(brandId);
+  await mkdir(avatarDir(brandId), { recursive: true });
+  await writeFile(path.join(avatarDir(brandId), `avatar${ext}`), data);
+}
+
+export async function deleteBrandAvatar(brandId) {
+  assertId(brandId);
+  for (const ext of AVATAR_EXT) await rm(path.join(avatarDir(brandId), `avatar${ext}`), { force: true });
 }
 
 // ---- 매거진 스타일 (brand-wide style overrides, stored with the content) ----
@@ -198,14 +236,43 @@ export async function listBrands() {
   return out.sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
 }
 
-/** Creates content/<brand>/<id>/post.json; `id` gets a numeric suffix if it already exists. */
-export async function createPost({ brand: brandId, slug, template, format, ratio, contentType, slides, source }) {
+/** Folder name rule: <account>_<YYMMDD in Korea time>-<NN>, e.g. pickydoggyclub_261107-01. */
+export async function newPostId(brandId, now = new Date()) {
   assertId(brandId);
-  const date = new Date().toISOString().slice(0, 7);
-  const clean = (slug ?? '').toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '') || 'post';
+  const kst = new Date(now.getTime() + 9 * 3600 * 1000).toISOString();
+  const day = `${kst.slice(2, 4)}${kst.slice(5, 7)}${kst.slice(8, 10)}`;
   const exists = (pid) => stat(postDir(brandId, pid)).then(() => true, () => false);
-  let id = `${date}-${clean}`;
-  for (let n = 2; await exists(id); n++) id = `${date}-${clean}-${n}`;
+  for (let n = 1; ; n++) {
+    const id = `${brandId}_${day}-${String(n).padStart(2, '0')}`;
+    if (!(await exists(id))) return id;
+  }
+}
+
+/**
+ * Carousels end on a last-page slide. When the line-up doesn't already end on one, the
+ * brand's 끝장 이미지 is added as a regular (swappable, deletable) slide; closing-image
+ * slides without a picture get the brand's closing image. Mutates and returns slides.
+ */
+export async function withClosingSlide(brandId, format, slides, template) {
+  if (format !== 'carousel') return slides;
+  const brand = await loadBrand(brandId).catch(() => null);
+  if (!brand) return slides; // unknown account (tests, removed brand): nothing to add
+  const closing = await closingImage(brand);
+  const roleOf = (s) => TEMPLATES[s.template ?? template]?.meta.role;
+  if (closing && roleOf(slides[slides.length - 1] ?? {}) !== 'last') {
+    slides.push({ ...TEMPLATES['closing-image'].meta.newSlide(), template: 'closing-image' });
+  }
+  for (const s of slides) {
+    if ((s.template ?? template) === 'closing-image' && !s.media && !s.image && closing) s.image = closing;
+  }
+  return slides;
+}
+
+/** Creates content/<brand>/<id>/post.json under an automatic folder name (newPostId). */
+export async function createPost({ brand: brandId, template, format, ratio, contentType, slides, source }) {
+  assertId(brandId);
+  const id = await newPostId(brandId);
+  await withClosingSlide(brandId, format, slides, template);
   const post = {
     id,
     brand: brandId,
@@ -218,6 +285,7 @@ export async function createPost({ brand: brandId, slug, template, format, ratio
     slides,
     caption: '',
     hashtags: [],
+    closingMigrated: true,
   };
   await mkdir(postDir(brandId, id), { recursive: true });
   return savePost(brandId, id, post);
@@ -264,7 +332,14 @@ export async function closingImage(brand) {
 
 export async function readPost(brandId, postId) {
   const file = path.join(postDir(brandId, postId), 'post.json');
-  return normalize(JSON.parse(await readFile(file, 'utf8')));
+  const post = normalize(JSON.parse(await readFile(file, 'utf8')));
+  // Carousels used to get the closing image appended at export time; it is a real slide
+  // now. Older posts gain it once (kept on their next save).
+  if (!post.closingMigrated) {
+    await withClosingSlide(brandId, post.format, post.slides, post.template).catch(() => {});
+    post.closingMigrated = true;
+  }
+  return post;
 }
 
 /**

@@ -6,7 +6,9 @@
 import { fieldStyle } from './runtime.mjs';
 import { renderMarkup, brandPalette } from './markup.mjs';
 
-const NATIVE = { 'editorial-photo': 'source', 'curation-frame': 'credit' };
+const NATIVE = { 'curation-frame': 'credit' };
+// Templates whose own fixed 'source' line is replaced by the shared, movable one.
+const OWN_FIELD = { 'editorial-photo': 'source' };
 const POSITIONS = { tl: 'top:56px;left:64px', tr: 'top:56px;right:64px;text-align:right', bl: 'bottom:56px;left:64px', br: 'bottom:56px;right:64px;text-align:right' };
 
 const showOption = { key: 'sourceShow', label: '출처 표시', choices: [[undefined, '표시'], ['off', '숨김']] };
@@ -44,15 +46,16 @@ export function withSource(key, mod) {
         mod.renderSlide(o.slide.sourceShow === 'off' ? { ...o, slide: { ...o.slide, [native]: '' } } : o),
     };
   }
+  const own = OWN_FIELD[key];
   return {
     ...mod,
     meta: {
       ...meta,
-      fields: [...meta.fields, sourceField],
+      fields: own ? meta.fields : [...meta.fields, sourceField],
       options: [...(meta.options ?? []), showOption, posOption],
     },
     renderSlide: (o) => {
-      const html = mod.renderSlide(o);
+      const html = mod.renderSlide(own ? { ...o, slide: { ...o.slide, [own]: '' } } : o);
       const text = o.slide.source;
       if (!text || !String(text).replace(/^출처\s*\|\s*/, '').trim() || o.slide.sourceShow === 'off') return html;
       // Before the runtime <script> so QA measures it like any other field.

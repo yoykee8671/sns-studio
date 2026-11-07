@@ -3,7 +3,7 @@
 // 110px side margins, text block anchored ~210px above the bottom edge.
 // Runs identically in the editor preview (iframe) and the exporter (Playwright).
 import { renderSticker, stickerCss } from '../stickers.mjs';
-import { slideRuntime, mediaTag, fieldStyle } from './runtime.mjs';
+import { slideRuntime, mediaTag, fieldStyle, isCoverSlide, LOOK_OPTION } from './runtime.mjs';
 import { renderMarkup, brandPalette } from './markup.mjs';
 import { feedSizeFor } from './sizes.mjs';
 import { webFontCss } from './fonts.mjs';
@@ -21,9 +21,10 @@ export const meta = {
   fields: [
     { key: 'headline', label: '헤드라인' },
     { key: 'body', label: '본문' },
-    { key: 'source', label: '출처 (좌측 상단)', focusDefault: '출처 | ', hint: '비우면 표시되지 않아요. 표지도 입력하면 로고와 함께 나와요.' },
+    { key: 'source', label: '출처', focusDefault: '출처 | ', hint: '비우거나 출처 표시를 숨기면 나오지 않아요.' },
   ],
   options: [
+    LOOK_OPTION,
     {
       key: 'topTone',
       label: '상단 글자색',
@@ -46,7 +47,7 @@ export const meta = {
  */
 export function renderSlide({ brand, post, slide, index, mediaSrc, mediaType, logoSvg, mode = 'export' }) {
   const { width: W, height: H } = meta.sizeFor(post);
-  const isCover = index === 0;
+  const isCover = isCoverSlide(slide, index);
   // Values interpolated into CSS/attributes are whitelisted, never passed through raw.
   const focus = /^\d{1,3}% \d{1,3}%$/.test(slide.focus ?? '') ? slide.focus : '50% 50%';
   const zoom = Math.min(3, Math.max(1, Number(slide.zoom) || 1));

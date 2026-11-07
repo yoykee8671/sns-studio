@@ -8,11 +8,12 @@ export async function GET() {
   return Response.json({ posts: await listPosts() });
 }
 
-// Creates an empty post from a template ({ brand, template, format, ratio?, slug, source? })
-// or from a 추천 조합 ({ brand, set, ratio?, slug }) whose slides come pre-templated,
-// or from 내 템플릿 ({ brand, layout, ratio?, slug }) — its design with empty text/photos.
+// Creates a post: blank ({ brand, ratio? } — a 지식형 cover; pick templates per slide in the
+// editor), from a 추천 조합 ({ brand, set, ratio? }) or from 내 템플릿 ({ brand, layout }).
+// The folder name is automatic (<account>_<YYMMDD>-<NN>) and carousels end on the
+// account's 끝장 이미지 unless the line-up already ends on a last-page template.
 export async function POST(req) {
-  const { brand, template, format, ratio, slug, source, set: setId, layout: layoutId } = await req.json();
+  const { brand, template = 'editorial-photo', format = 'carousel', ratio, source, set: setId, layout: layoutId } = await req.json();
   if (ratio !== undefined && !isRatio(ratio)) return Response.json({ error: 'unknown ratio' }, { status: 400 });
   try {
     if (layoutId) {
@@ -20,7 +21,6 @@ export async function POST(req) {
       const t = TEMPLATES[l.template];
       const post = await createPost({
         brand,
-        slug: slug || 'post',
         template: l.template,
         format: l.format,
         ratio: l.format === 'reel' ? undefined : (ratio ?? l.ratio ?? DEFAULT_RATIO),
@@ -36,7 +36,6 @@ export async function POST(req) {
       const draft = { format: 'carousel' };
       const post = await createPost({
         brand,
-        slug: slug || set.id,
         template: set.slides[0],
         format: 'carousel',
         ratio: ratio ?? DEFAULT_RATIO,
@@ -51,7 +50,6 @@ export async function POST(req) {
     const draft = { format, source };
     const post = await createPost({
       brand,
-      slug,
       template,
       format,
       ratio: format === 'reel' ? undefined : (ratio ?? DEFAULT_RATIO),

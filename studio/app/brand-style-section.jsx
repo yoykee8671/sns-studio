@@ -71,11 +71,12 @@ export default function BrandStyleSection({ data, embedded = false }) {
         <div className="series-body">
           <p className="note">색과 글꼴을 한 번 정하면 그 계정의 모든 카드에 입혀요. 비워두면 브랜드 기본값.</p>
           {error && <p className="form-error">{error}</p>}
-          {data.map(({ brand, handle, effective }) => {
+          {data.map(({ brand, handle, effective, avatarSrc, igReady }) => {
             const t = drafts[brand] ?? {};
             return (
               <div className="series-brand" key={brand}>
                 <h3>{handle}</h3>
+                <AvatarRow brand={brand} src={avatarSrc} igReady={igReady} onError={setError} onDone={() => router.refresh()} />
                 <div className="style-grid">
                   {[
                     ['point', '포인트 색'],
@@ -119,5 +120,67 @@ export default function BrandStyleSection({ data, embedded = false }) {
         </div>
       )}
     </section>
+  );
+}
+
+/**
+ * 프로필 사진 — used by the 팔로우 카드 (and anything else showing the account).
+ * Fetched from Instagram when the account has a token, or uploaded by hand.
+ */
+function AvatarRow({ brand, src, igReady, onError, onDone }) {
+  const [busy, setBusy] = useState(null);
+  const call = async (key, init) => {
+    setBusy(key);
+    onError(null);
+    try {
+      const res = await fetch(`/api/brand-style/${brand}/avatar`, init);
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error ?? `요청 실패 (${res.status})`);
+      onDone();
+    } catch (e) {
+      onError(`${brand} 프로필 사진: ${e.message}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+  const upload = (file) => {
+    if (!file) return;
+    const body = new FormData();
+    body.append('file', file);
+    call('upload', { method: 'POST', body });
+  };
+  return (
+    <div className="avatar-row">
+      <span className="avatar-preview">
+        {src ? <img src={src} alt={`${brand} 프로필 사진`} /> : <span className="note">없음</span>}
+      </span>
+      <div className="avatar-info">
+        <strong>프로필 사진</strong>
+        <span className="note">팔로우 카드의 동그란 사진에 들어가요. 없으면 로고가 나와요.</span>
+        <div className="series-actions">
+          <button
+            disabled={!!busy || !igReady}
+            title={igReady ? '' : '이 계정은 Instagram 토큰이 없어서 직접 올려야 해요'}
+            onClick={() => call('ig', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ source: 'instagram' }),
+            })}
+          >
+            {busy === 'ig' ? '가져오는 중…' : '인스타그램에서 가져오기'}
+          </button>
+          <label className="upload">
+            <input type="file" accept="image/jpeg,image/png,image/webp" disabled={!!busy}
+              onChange={(e) => { upload(e.target.files?.[0]); e.target.value = ''; }} />
+            {busy === 'upload' ? '올리는 중…' : '직접 올리기'}
+          </label>
+          {src && (
+            <button className="btn-plain topbar-danger" disabled={!!busy} onClick={() => call('del', { method: 'DELETE' })}>
+              지우기
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

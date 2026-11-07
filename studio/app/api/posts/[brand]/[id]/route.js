@@ -1,4 +1,4 @@
-import { readPost, savePost, deletePost, loadBrand, loadLogoSvg, imageStatus, closingImage } from '@/lib/store.mjs';
+import { readPost, savePost, deletePost, loadBrand, loadLogoSvg, imageStatus, closingImage, clientBrand } from '@/lib/store.mjs';
 import { publishConfig } from '@/lib/instagram.mjs';
 
 export async function GET(_req, { params }) {
@@ -10,7 +10,7 @@ export async function GET(_req, { params }) {
       imageStatus(brand, post),
       closingImage(brand),
     ]);
-    return Response.json({ post, brand, logoSvg, images, closing, publish: publishConfig(brand) });
+    return Response.json({ post, brand: clientBrand(brand), logoSvg, images, closing, publish: publishConfig(brand) });
   } catch (err) {
     return Response.json({ error: err.message }, { status: 404 });
   }

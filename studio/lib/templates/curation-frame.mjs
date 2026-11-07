@@ -4,7 +4,7 @@
 // The per-slide 'overlay' layout instead puts the media full-bleed and overlays the text:
 // credit top-left, headline/comment on a bottom gradient (reference: biscit.co.kr feed).
 import { renderSticker, stickerCss } from '../stickers.mjs';
-import { slideRuntime, mediaTag, fieldStyle } from './runtime.mjs';
+import { slideRuntime, mediaTag, fieldStyle, isCoverSlide, LOOK_OPTION } from './runtime.mjs';
 import { renderMarkup, brandPalette } from './markup.mjs';
 import { feedSizeFor } from './sizes.mjs';
 import { webFontCss } from './fonts.mjs';
@@ -24,6 +24,7 @@ export const meta = {
     { key: 'credit', label: '출처 표기' },
   ],
   options: [
+    LOOK_OPTION,
     { key: 'layout', label: '레이아웃', choices: [[undefined, '밴드 분리'], ['overlay', '영상 위 텍스트']] },
     {
       key: 'theme',
@@ -63,7 +64,7 @@ export const meta = {
 export function renderSlide({ brand, post, slide, index, mediaSrc, mediaType, logoSvg, mode = 'export' }) {
   const { width: W, height: H } = meta.sizeFor(post);
   const isReel = post?.format === 'reel';
-  const isCover = index === 0;
+  const isCover = isCoverSlide(slide, index);
   const dark = slide.theme === 'dark';
   const fit = slide.fit === 'cover' ? 'cover' : 'contain';
   const { fonts, colors } = brand;

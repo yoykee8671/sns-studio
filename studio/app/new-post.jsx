@@ -5,11 +5,11 @@ import { useRouter } from 'next/navigation';
 import { RATIOS, DEFAULT_RATIO } from '@/lib/templates/sizes.mjs';
 import { SETS } from '@/lib/templates/sets.mjs';
 
-const TYPES = [
-  { template: 'curation-frame', label: '디깅형', hint: '남의 좋은 콘텐츠 + 우리 코멘트', formats: ['carousel', 'single', 'reel'] },
-  { template: 'editorial-photo', label: '지식형', hint: '사진 풀블리드 + 정보', formats: ['carousel', 'single'] },
-];
-const FORMAT_LABEL = { carousel: '캐러셀', single: '단일 피드', reel: '릴스' };
+// YYMMDD in Korea time, matching the server's folder-name rule (store.newPostId).
+const todayCode = () =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: '2-digit', month: '2-digit', day: '2-digit' })
+    .format(new Date()).replaceAll('-', '');
+
 const MODES = [
   ['blank', '빈 게시물'],
   ['set', '추천 조합'],
@@ -23,17 +23,12 @@ export default function NewPost({ brands, aiReady = false, layouts = [], embedde
   const open = embedded || openState;
   const [mode, setMode] = useState('blank');
   const [brand, setBrand] = useState(defaultBrand ?? brands[0]?.id ?? '');
-  const [type, setType] = useState(TYPES[0]);
-  const [format, setFormat] = useState('carousel');
   const [ratio, setRatio] = useState(DEFAULT_RATIO);
   const [setId, setSetId] = useState(SETS[0].id);
   const [pickedLayout, setLayoutId] = useState(layouts[0]?.id ?? null);
   // The list refreshes without resetting state; a deleted pick falls back to the first.
   const layoutId = layouts.some((l) => l.id === pickedLayout) ? pickedLayout : (layouts[0]?.id ?? null);
   const [text, setText] = useState('');
-  const [slug, setSlug] = useState('');
-  const [url, setUrl] = useState('');
-  const [handle, setHandle] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
@@ -45,19 +40,12 @@ export default function NewPost({ brands, aiReady = false, layouts = [], embedde
       const endpoint = mode === 'manuscript' ? '/api/manuscript' : '/api/posts';
       const body =
         mode === 'layout'
-          ? { brand, layout: layoutId, slug: slug || undefined }
+          ? { brand, layout: layoutId }
           : mode === 'set'
-          ? { brand, set: setId, ratio, slug: slug || undefined }
-          : mode === 'manuscript'
-            ? { brand, set: setId, text, ratio, slug: slug || undefined }
-            : {
-                brand,
-                template: type.template,
-                format,
-                ratio: format === 'reel' ? undefined : ratio,
-                slug: slug || handle || 'post',
-                source: type.template === 'curation-frame' ? { url, handle: handle.replace(/^@/, '') } : undefined,
-              };
+            ? { brand, set: setId, ratio }
+            : mode === 'manuscript'
+              ? { brand, set: setId, text, ratio }
+              : { brand, ratio };
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -105,37 +93,10 @@ export default function NewPost({ brands, aiReady = false, layouts = [], embedde
       </div>
 
       {mode === 'blank' && (
-        <>
-          <div className="field">
-            <label>콘텐츠 타입</label>
-            <div className="seg">
-              {TYPES.map((t) => (
-                <button
-                  type="button"
-                  key={t.template}
-                  className={type.template === t.template ? 'on' : ''}
-                  onClick={() => {
-                    setType(t);
-                    if (!t.formats.includes(format)) setFormat('carousel');
-                  }}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </div>
-            <p className="note">{type.hint} · 새 템플릿들은 에디터에서 장마다 고를 수 있어요.</p>
-          </div>
-          <div className="field">
-            <label>형식</label>
-            <div className="seg">
-              {type.formats.map((f) => (
-                <button type="button" key={f} className={format === f ? 'on' : ''} onClick={() => setFormat(f)}>
-                  {FORMAT_LABEL[f]}
-                </button>
-              ))}
-            </div>
-          </div>
-        </>
+        <p className="note">
+          표지 한 장과 계정의 끝장 이미지로 시작해요. 장마다 템플릿을 고르고, 사진·영상을 올리면
+          캐러셀/릴스는 자동으로 정해져요.
+        </p>
       )}
 
       {(mode === 'set' || mode === 'manuscript') && (
@@ -190,7 +151,7 @@ export default function NewPost({ brands, aiReady = false, layouts = [], embedde
         </div>
       )}
 
-      {mode !== 'layout' && (mode !== 'blank' || format !== 'reel') && (
+      {mode !== 'layout' && (
         <div className="field">
           <label>사이즈</label>
           <div className="seg">
@@ -205,22 +166,7 @@ export default function NewPost({ brands, aiReady = false, layouts = [], embedde
           </p>
         </div>
       )}
-      {mode === 'blank' && type.template === 'curation-frame' && (
-        <>
-          <div className="field">
-            <label>원본 링크</label>
-            <input className="text-input" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://www.instagram.com/p/…" />
-          </div>
-          <div className="field">
-            <label>원작자 계정</label>
-            <input className="text-input" value={handle} onChange={(e) => setHandle(e.target.value)} placeholder="@mi_mi_vintage" />
-          </div>
-        </>
-      )}
-      <div className="field">
-        <label>폴더 이름 <small>(영문, 비우면 자동)</small></label>
-        <input className="text-input" value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="halloween-foods" />
-      </div>
+      <p className="note">폴더 이름은 자동으로 정해져요: 계정_날짜-번호 (예: {brand}_{todayCode()}-01)</p>
       {error && <p className="form-error">{error}</p>}
       <div className="modal-actions">
         <button type="button" onClick={() => (embedded ? onClose?.() : setOpen(false))}>취소</button>

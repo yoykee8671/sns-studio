@@ -1,5 +1,5 @@
 import { readLayout, updateLayout, deleteLayout, layoutAsPost, isLayoutId } from '@/lib/layouts.mjs';
-import { loadBrand, loadLogoSvg, imageStatus, closingImage, listBrands } from '@/lib/store.mjs';
+import { loadBrand, loadLogoSvg, imageStatus, closingImage, listBrands, clientBrand } from '@/lib/store.mjs';
 
 // Same payload shape as GET /api/posts/<brand>/<id>, so the editor can open a template.
 export async function GET(_req, { params }) {
@@ -12,7 +12,7 @@ export async function GET(_req, { params }) {
     const [logoSvg, images, closing] = await Promise.all([
       loadLogoSvg(brand), imageStatus(brand, post), closingImage(brand),
     ]);
-    return Response.json({ post, brand, logoSvg, images, closing, publish: { ready: false, missing: [] } });
+    return Response.json({ post, brand: clientBrand(brand), logoSvg, images, closing, publish: { ready: false, missing: [] } });
   } catch (err) {
     return Response.json({ error: err.message }, { status: 404 });
   }

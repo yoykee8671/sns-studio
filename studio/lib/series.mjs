@@ -95,11 +95,8 @@ export async function nextIssue(brandId, seriesId) {
   });
 
   const no = s.nextNo;
-  // Slug from the series id — Korean titles would slugify to nothing and collide.
-  const slug = `${s.id}-${String(no).padStart(3, '0')}`;
   const post = await createPost({
     brand: brandId,
-    slug,
     template: base.template,
     format: base.format,
     ratio: base.ratio,

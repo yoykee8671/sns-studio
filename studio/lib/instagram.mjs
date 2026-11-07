@@ -89,3 +89,24 @@ export async function publish({ brand, items, caption }) {
   const { permalink } = await graph(mediaId, { fields: 'permalink' }, token, 'GET');
   return { mediaId, permalink };
 }
+
+/**
+ * The account's current Instagram profile picture (bytes + extension), via the same
+ * user id/token the brand publishes with. Throws when the account has no token.
+ */
+export async function fetchProfilePicture(brand) {
+  const user = brand?.ig?.userIdEnv && process.env[brand.ig.userIdEnv];
+  const token = brand?.ig?.tokenEnv && process.env[brand.ig.tokenEnv];
+  if (!user || !token) throw new Error('이 계정은 Instagram 연결 정보(토큰)가 없어요. 사진을 직접 올려주세요.');
+  const { profile_picture_url: url } = await graph(user, { fields: 'profile_picture_url' }, token, 'GET');
+  if (!url) throw new Error('Instagram이 프로필 사진 주소를 주지 않았어요.');
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`프로필 사진을 받지 못했어요 (${res.status})`);
+  const type = res.headers.get('content-type') ?? '';
+  const ext = type.includes('png') ? '.png' : type.includes('webp') ? '.webp' : '.jpg';
+  return { data: Buffer.from(await res.arrayBuffer()), ext };
+}
+
+/** True when the brand has Instagram credentials configured (no network call). */
+export const hasInstagram = (brand) =>
+  Boolean(brand?.ig?.userIdEnv && process.env[brand.ig.userIdEnv] && brand?.ig?.tokenEnv && process.env[brand.ig.tokenEnv]);

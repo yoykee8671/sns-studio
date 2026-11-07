@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { getTemplate, resolveTemplate, TEMPLATES } from '@/lib/templates/index.mjs';
+import { getTemplate, resolveTemplate, TEMPLATES, isCoverSlide } from '@/lib/templates/index.mjs';
+import { autoFormat, needsPermission } from '@/lib/post-rules.mjs';
 import { RATIOS } from '@/lib/templates/sizes.mjs';
 import { STICKER_TYPES, createSticker, resolveColor } from '@/lib/stickers.mjs';
 import TemplateGallery from './template-gallery';
@@ -162,7 +163,6 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
         setCtx({ brand: d.brand, logoSvg: d.logoSvg, publish: d.publish, closing: d.closing });
         setPost(d.post);
         setImages(d.images);
-        if (kind !== 'layout' && d.post.contentType === 'curation' && !d.post.source?.handle) setTab('source');
       })
       .catch((e) => setLoadError(e.message));
   }, [apiBase, kind]);
@@ -233,10 +233,19 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
     return () => window.removeEventListener('beforeunload', onBeforeUnload);
   }, [dirty]);
 
+  // 캐러셀/릴스 follows the content (a single video slide = 릴스); no manual switch.
+  useEffect(() => {
+    if (!post || isLayout) return;
+    const next = autoFormat(post);
+    if (next !== post.format) {
+      setPost((p) => ({ ...p, format: next }));
+      setDirty(true);
+    }
+  }, [post, isLayout]);
+
   const debounced = useDebounced(post, 180);
   const template = useMemo(() => (post ? getTemplate(post.template) : null), [post?.template]);
   const size = template && post ? template.meta.sizeFor(post) : { width: 1080, height: 1350 };
-  const closingUrl = ctx?.closing && post?.format === 'carousel' ? assetUrl(brandId, ctx.closing) : null;
   const slideHtml = useCallback(
     (p, i, mode) => {
       const { src, type } = mediaOf(brandId, postId, p.slides[i]);
@@ -253,13 +262,12 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
     },
     [ctx, brandId, postId],
   );
-  const onClosing = post && closingUrl && sel >= post.slides.length;
   const mainHtml = useMemo(
     () =>
-      debounced && ctx && !onClosing
+      debounced && ctx
         ? slideHtml(debounced, Math.min(sel, debounced.slides.length - 1), 'preview')
         : '',
-    [debounced, ctx, sel, slideHtml, onClosing],
+    [debounced, ctx, sel, slideHtml],
   );
   const thumbHtml = useMemo(
     () => (debounced && ctx ? debounced.slides.map((_, i) => slideHtml(debounced, i, 'export')) : []),
@@ -392,7 +400,7 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
       if (!res.ok) throw new Error(await errorOf(res));
       await downloadBlob(res, 'export.zip');
       if (fmt === 'svg') setModal({ kind: 'figma' });
-      else notify(`${post.slides.length}장${closingUrl ? ' + 끝장' : ''}과 캡션을 내려받았어요.`);
+      else notify(`${post.slides.length}장과 캡션을 내려받았어요.`);
     } catch (e) {
       notify(`내보내기 실패: ${e.message}`, 'error');
     } finally {
@@ -439,7 +447,7 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
     }
   };
 
-  const maxSlides = closingUrl ? 9 : 10; // Instagram carousels take 10 items incl. the closing slide
+  const maxSlides = 10; // Instagram carousels take up to 10 items
 
   const usesMediaAt = (p, i) => {
     const t = resolveTemplate(p, p.slides[i]).meta;
@@ -464,15 +472,22 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
   const uploadFiles = async (fileList) => {
     const files = [...(fileList ?? [])];
     if (!files.length) return;
-    const multi = post.format === 'carousel';
-    const plan = [sel];
-    let len = post.slides.length;
+    const multi = post.format !== 'single';
+    // New slides go in before a trailing last-page slide (끝장 이미지, 팔로우 카드).
+    const lastRole = (p) => resolveTemplate(p, p.slides[p.slides.length - 1]).meta.role === 'last';
+    const tail = post.slides.length > 1 && lastRole(post) ? 1 : 0;
+    const scanEnd = post.slides.length - tail;
+    const plan = [{ index: sel }];
+    let total = post.slides.length;
     for (let k = 1; k < files.length && multi; k++) {
-      let j = plan[plan.length - 1] + 1;
-      while (j < len && (!usesMediaAt(post, j) || post.slides[j].media || post.slides[j].image)) j++;
-      if (j < len) plan.push(j);
-      else if (len < maxSlides) plan.push(len++);
-      else break;
+      const prev = plan[plan.length - 1];
+      let j = prev.isNew ? scanEnd : prev.index + 1;
+      while (j < scanEnd && (!usesMediaAt(post, j) || post.slides[j].media || post.slides[j].image)) j++;
+      if (j < scanEnd) plan.push({ index: j });
+      else if (total < maxSlides) {
+        plan.push({ isNew: true });
+        total++;
+      } else break;
     }
     const skipped = files.length - plan.length;
     setBusy('upload');
@@ -485,7 +500,7 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
         const res = await fetch(`${apiBase}/media`, { method: 'POST', body });
         if (res.status === 413) throw new Error(`${files[k].name}: 파일이 너무 커요 (최대 100MB). 영상을 압축해서 다시 올려주세요.`);
         if (!res.ok) throw new Error(`${files[k].name}: ${await errorOf(res)}`);
-        done.push({ index: plan[k], fields: await res.json() });
+        done.push({ ...plan[k], fields: await res.json() });
       }
     } catch (e) {
       notify(`업로드 실패: ${e.message}${done.length ? ` (앞의 ${done.length}개는 올라갔어요)` : ''}`, 'error');
@@ -494,28 +509,36 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
       setUploadNote(null);
     }
     if (!done.length) return;
-    // Slides can't be moved, added or deleted while busy, so the planned indices still hold.
+    // Slides can't be moved, added or deleted while busy, so the planned indices still hold;
+    // new slides are inserted at the end of the content, before the trailing last page.
     update((p) => {
-      const key = photoTemplateKey(p, plan[0]);
-      for (const { index, fields } of done) {
-        if (index > p.slides.length) continue;
-        if (index === p.slides.length) {
+      const key = photoTemplateKey(p, sel);
+      let insertAt = p.slides.length - (p.slides.length > 1 && lastRole(p) ? 1 : 0);
+      for (const d of done) {
+        let index = d.index;
+        if (d.isNew) {
           const s = TEMPLATES[key].meta.newSlide(p);
           if (key !== p.template) s.template = key;
-          p.slides.push(s);
-        }
+          p.slides.splice(insertAt, 0, s);
+          index = insertAt++;
+        } else if (index >= p.slides.length) continue;
         const slide = p.slides[index];
-        Object.assign(slide, fields);
+        Object.assign(slide, d.fields);
         delete slide.image;
         Object.assign(slide, photoPatch(resolveTemplate(p, slide).meta, slide));
       }
     });
     setImages((im) => {
       const next = [...im];
-      for (const { index, fields } of done) next[index] = { state: 'ok', sha: fields.imageSha256 };
+      let insertAt = next.length - tail;
+      for (const d of done) {
+        if (d.isNew) next.splice(insertAt++, 0, { state: 'ok', sha: d.fields.imageSha256 });
+        else if (d.index < next.length) next[d.index] = { state: 'ok', sha: d.fields.imageSha256 };
+      }
       return next;
     });
-    const added = done.filter((d) => d.index >= post.slides.length).length;
+    setReports({});
+    const added = done.filter((d) => d.isNew).length;
     notify(
       done.length === 1
         ? `${done[0].fields.mediaType === 'video' ? '영상' : '사진'}을 올렸어요. 저장을 눌러야 게시물에 남아요.`
@@ -531,6 +554,7 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
     update((p) => {
       const s = tMeta.newSlide(p);
       const key = templateKey ?? prevSlide?.template;
+      if (key === 'closing-image' && ctx.closing) s.image = ctx.closing;
       if (key && key !== p.template) s.template = key;
       else delete s.template;
       p.slides.push(s);
@@ -636,7 +660,7 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
   if (!post || !ctx) return <main className="center-msg">불러오는 중…</main>;
 
   const { meta } = template;
-  const slide = onClosing ? null : post.slides[Math.min(sel, post.slides.length - 1)];
+  const slide = post.slides[Math.min(sel, post.slides.length - 1)];
   // Panel fields/options follow the slide's own template; crumb and format switching stay post-level.
   const sMeta = (slide ? resolveTemplate(post, slide) : template).meta;
   // Template choices for this slide: compatible with the post format, grouped by role
@@ -650,8 +674,7 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
   const report = reports[sel];
   const allIssues = Object.entries(reports).flatMap(([i, r]) => r.issues.map((t) => `${+i + 1}장: ${t}`));
   const hashtags = post.hashtags ?? [];
-  const isCuration = post.contentType === 'curation';
-  const blocked = isCuration && post.source?.permission !== 'granted';
+  const blocked = !isLayout && needsPermission(post);
   const thumbScale = THUMB_W / size.width;
   const title = isLayout
     ? post.layoutName
@@ -746,7 +769,7 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
 
       {blocked && !isLayout && (
         <div className="banner">
-          원작자 허락 전이라 내려받기·발행이 잠겨 있어요. <button className="link" onClick={() => setTab('source')}>소재·출처 탭</button>에서 허락 상태를 바꿔주세요.
+          원작자 허락 전이라 내려받기·발행이 잠겨 있어요. <button className="link" onClick={() => setTab('source')}>출처·허락 탭</button>에서 허락 상태를 바꿔주세요.
         </div>
       )}
 
@@ -763,9 +786,7 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
             <Icon d={CHEVRON_LEFT} size={18} />
           </button>
           <div className="stage-frame" style={{ width: size.width * scale, height: size.height * scale }}>
-            {onClosing ? (
-              <img src={closingUrl} alt="끝장" style={{ width: size.width * scale, height: size.height * scale, objectFit: 'cover', display: 'block' }} />
-            ) : (
+            {(
               <iframe
                 ref={mainFrame}
                 srcDoc={mainHtml}
@@ -777,16 +798,14 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
           <button
             className="btn-icon stage-nav"
             aria-label="다음 장"
-            disabled={sel >= post.slides.length - (closingUrl ? 0 : 1)}
-            onClick={() => setSel(Math.min(post.slides.length - (closingUrl ? 0 : 1), sel + 1))}
+            disabled={sel >= post.slides.length - 1}
+            onClick={() => setSel(Math.min(post.slides.length - 1, sel + 1))}
           >
             <Icon d={CHEVRON_RIGHT} size={18} />
           </button>
           </div>
           <p className="stage-hint">
-            {onClosing
-              ? `끝장 (자동) · ${post.slides.length + 1} / ${post.slides.length + 1}`
-              : `${sel + 1} / ${post.slides.length}${closingUrl ? '+끝' : ''} · 스티커는 드래그로 이동, 모서리 핸들로 크기 조절 · 사진은 드래그로 위치 조정`}
+            {`${sel + 1} / ${post.slides.length} · 스티커는 드래그로 이동, 모서리 핸들로 크기 조절 · 사진은 드래그로 위치 조정`}
           </p>
           {post.format !== 'reel' && (
             <div className="stage-size">
@@ -803,7 +822,7 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
                 ))}
               </div>
               <span className="note">
-                {onClosing ? '끝장' : `${sel + 1} / ${post.slides.length}장`} · {size.width}×{size.height}
+                {`${sel + 1} / ${post.slides.length}장`} · {size.width}×{size.height}
               </span>
             </div>
           )}
@@ -847,19 +866,8 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
                 </span>
               </button>
             ))}
-            {closingUrl && (
-              <button
-                className={`thumb ${onClosing ? 'active' : ''}`}
-                onClick={() => setSel(post.slides.length)}
-                aria-label="끝장"
-              >
-                <div className="thumb-frame" style={{ width: THUMB_W, height: size.height * thumbScale }}>
-                  <img className="thumb-closing" src={closingUrl} alt="끝장" />
-                </div>
-                <span className="thumb-num">끝</span>
-              </button>
-            )}
-            {post.format !== 'reel' && post.format !== 'single' && post.slides.length < maxSlides && (
+            {/* A reel is just a one-video post: adding a slide turns it back into a carousel. */}
+            {post.format !== 'single' && post.slides.length < maxSlides && (
               <button className="add-slide" onClick={() => setGallery('add')} disabled={busy === 'upload'}>
                 <Icon d={PLUS} size={16} />장 추가
               </button>
@@ -867,11 +875,11 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
           </nav>
           <div className="tabs" role="tablist">
             <button className={tab === 'slide' ? 'on' : ''} onClick={() => setTab('slide')}>
-              {onClosing ? '끝장' : `${sel + 1}장 편집`}
+              {`${sel + 1}장 편집`}
             </button>
-            {isCuration && !isLayout && (
+            {!isLayout && (
               <button className={tab === 'source' ? 'on' : ''} onClick={() => setTab('source')}>
-                소재·출처
+                출처·허락
               </button>
             )}
             {!isLayout && (
@@ -882,18 +890,7 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
           </div>
           </div>
 
-          {tab === 'slide' && onClosing && (
-            <div className="panel-body">
-              <p className="note">
-                맨 끝장은 자동으로 붙는 고정 이미지예요. 텍스트·그라데이션 없이 이미지 그대로 나가요.
-              </p>
-              <p className="note">
-                이미지를 바꾸려면 <code>@{brandId}/closing/</code> 폴더 안의 파일을 교체하면 돼요.
-              </p>
-            </div>
-          )}
-
-          {tab === 'slide' && !onClosing && (
+          {tab === 'slide' && (
             <div className="panel-body">
               <div className="slide-tools">
                 <button onClick={() => moveSlide(sel, -1)} disabled={sel === 0 || busy === 'upload'}>↑</button>
@@ -946,7 +943,7 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
                   slide={slide}
                   status={images[sel]}
                   accept={sMeta.mediaTypes.includes('video') ? 'image/*,video/*' : 'image/*'}
-                  multiple={post.format === 'carousel'}
+                  multiple={post.format !== 'single'}
                   busy={busy === 'upload'}
                   progress={uploadNote}
                   onUpload={uploadFiles}
@@ -978,7 +975,7 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
               />
 
               {sMeta.options
-                .filter((o) => (!o.coverOnly || sel === 0) && !o.hidden?.(slide))
+                .filter((o) => (!o.coverOnly || isCoverSlide(slide, sel)) && !o.hidden?.(slide))
                 .map((o) => (
                   <div className="field" key={o.key}>
                     <label>{o.label}</label>
@@ -1024,23 +1021,11 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
             </div>
           )}
 
-          {tab === 'source' && isCuration && !isLayout && (
+          {tab === 'source' && !isLayout && (
             <SourcePanel
               post={post}
               brandHandle={ctx.brand.handle}
-              formats={meta.formats}
               onSource={(patch) => update((p) => Object.assign((p.source ??= {}), patch))}
-              onFormat={(f) => {
-                update((p) => {
-                  p.format = f;
-                  if (f !== 'carousel') p.slides = p.slides.slice(0, 1);
-                });
-                if (f !== 'carousel') {
-                  setImages((im) => im.slice(0, 1));
-                  setReports({});
-                  setSel(0);
-                }
-              }}
               onApplyCredit={() =>
                 update((p) => p.slides.forEach((s) => {
                   s.credit = `📷 @${p.source.handle}`;
@@ -1215,6 +1200,7 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
               updateSlide(sel, {
                 template: key === post.template ? undefined : key,
                 ...photoPatch(TEMPLATES[key].meta, slide),
+                ...(key === 'closing-image' && !slide.media && !slide.image && ctx.closing ? { image: ctx.closing } : {}),
               });
             } else addSlide(key);
             setGallery(null);
@@ -1283,7 +1269,7 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
               <>
                 <h2>@{brandId}에 바로 발행할까요?</h2>
                 <p>
-                  {FORMAT_LABEL[post.format]} {post.slides.length}장{closingUrl ? ' + 끝장' : ''}과 캡션이
+                  {FORMAT_LABEL[post.format]} {post.slides.length}장과 캡션이
                   지금 상태 그대로 올라가요. 발행 후에는 이 앱에서 되돌릴 수 없어요.
                 </p>
                 {allIssues.length > 0 && (
@@ -1568,7 +1554,7 @@ function MediaRow({ slide, status, accept, multiple, busy, progress, onUpload, o
   );
 }
 
-function SourcePanel({ post, brandHandle, formats, onSource, onFormat, onApplyCredit, notify }) {
+function SourcePanel({ post, brandHandle, onSource, onApplyCredit, notify }) {
   const src = post.source ?? {};
   const copy = async () => {
     await navigator.clipboard.writeText(src.dm ?? '');
@@ -1576,17 +1562,10 @@ function SourcePanel({ post, brandHandle, formats, onSource, onFormat, onApplyCr
   };
   return (
     <div className="panel-body">
-      <div className="field">
-        <label>형식</label>
-        <div className="seg">
-          {formats.map((f) => (
-            <button key={f} className={post.format === f ? 'on' : ''} onClick={() => onFormat(f)}>
-              {FORMAT_LABEL[f]}
-            </button>
-          ))}
-        </div>
-        {post.format !== 'carousel' && <p className="note">단일 피드·릴스는 1장만 써요. 릴스는 1080×1920, 코멘트가 위쪽에 들어가요.</p>}
-      </div>
+      <p className="note">
+        다른 계정의 게시물을 소개할 때 써요. 원본 링크나 계정을 적으면 원작자 허락을 &lsquo;허락 받음&rsquo;으로
+        바꾸기 전까지 내려받기·발행이 잠겨요.
+      </p>
       <div className="field">
         <label>원본 링크</label>
         <input
