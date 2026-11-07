@@ -35,6 +35,21 @@ export async function PUT(req, { params }) {
   if (post?.brand !== brandId || post?.id !== id) {
     return Response.json({ error: 'brand/id mismatch' }, { status: 400 });
   }
+  // The media may have been purged (7-day expiry) while this editor was open: keep the
+  // purge record and drop references to the deleted files instead of reviving them.
+  const existing = await readPost(brandId, id).catch(() => null);
+  if (existing?.mediaPurged && !post.mediaPurged) {
+    const gone = new Set(existing.purgedFiles ?? []);
+    for (const s of post.slides ?? []) {
+      if (s.media && gone.has(s.media.split('/').pop())) {
+        delete s.media;
+        delete s.mediaType;
+        delete s.imageSha256;
+      }
+    }
+    post.mediaPurged = true;
+    post.purgedFiles = existing.purgedFiles;
+  }
   const saved = await savePost(brandId, id, post);
   const images = await imageStatus(await loadBrand(brandId), saved);
   return Response.json({ post: saved, images });

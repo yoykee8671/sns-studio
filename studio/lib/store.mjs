@@ -332,10 +332,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** When a published post's media get deleted (ISO string), or null when not applicable. */
 export function mediaExpiresAt(post) {
-  if (post.status !== 'published' || post.mediaPurged) return null;
-  const since = post.publishedAt ?? post.updatedAt;
-  if (!since) return null;
-  return new Date(Date.parse(since) + MEDIA_RETENTION_DAYS * DAY_MS).toISOString();
+  if (post.status !== 'published' || post.mediaPurged || !post.publishedAt) return null;
+  return new Date(Date.parse(post.publishedAt) + MEDIA_RETENTION_DAYS * DAY_MS).toISOString();
 }
 
 /** Purges media of every post whose retention ran out. Returns the purged ids. */
@@ -347,6 +345,12 @@ export async function expirePublishedMedia(now = Date.now()) {
       if (!SAFE_ID.test(postId)) continue;
       try {
         const post = await readPost(brandId, postId);
+        // Published before publish dates were recorded: start their 7 days now
+        // (savePost stamps publishedAt) rather than purging them on first sight.
+        if (post.status === 'published' && !post.publishedAt && !post.mediaPurged) {
+          await savePost(brandId, postId, post, { touch: false });
+          continue;
+        }
         const at = mediaExpiresAt(post);
         if (!at || Date.parse(at) > now) continue;
         await purgeMedia(brandId, postId, { touch: false });

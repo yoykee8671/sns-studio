@@ -26,7 +26,9 @@ export default function NewPost({ brands, aiReady = false, layouts = [] }) {
   const [format, setFormat] = useState('carousel');
   const [ratio, setRatio] = useState(DEFAULT_RATIO);
   const [setId, setSetId] = useState(SETS[0].id);
-  const [layoutId, setLayoutId] = useState(layouts[0]?.id ?? null);
+  const [pickedLayout, setLayoutId] = useState(layouts[0]?.id ?? null);
+  // The list refreshes without resetting state; a deleted pick falls back to the first.
+  const layoutId = layouts.some((l) => l.id === pickedLayout) ? pickedLayout : (layouts[0]?.id ?? null);
   const [text, setText] = useState('');
   const [slug, setSlug] = useState('');
   const [url, setUrl] = useState('');

@@ -152,10 +152,10 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
         setCtx({ brand: d.brand, logoSvg: d.logoSvg, publish: d.publish, closing: d.closing });
         setPost(d.post);
         setImages(d.images);
-        if (d.post.contentType === 'curation' && !d.post.source?.handle) setTab('source');
+        if (kind !== 'layout' && d.post.contentType === 'curation' && !d.post.source?.handle) setTab('source');
       })
       .catch((e) => setLoadError(e.message));
-  }, [apiBase]);
+  }, [apiBase, kind]);
 
   const toastTimer = useRef(null);
   const notify = useCallback((text, kind = 'info') => {
@@ -482,10 +482,12 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
       setUploadNote(null);
     }
     if (!done.length) return;
+    // Slides can't be moved, added or deleted while busy, so the planned indices still hold.
     update((p) => {
-      const key = photoTemplateKey(p, sel);
+      const key = photoTemplateKey(p, plan[0]);
       for (const { index, fields } of done) {
-        if (index >= p.slides.length) {
+        if (index > p.slides.length) continue;
+        if (index === p.slides.length) {
           const s = TEMPLATES[key].meta.newSlide(p);
           if (key !== p.template) s.template = key;
           p.slides.push(s);
@@ -525,14 +527,14 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
     setSel(post.slides.length);
   };
   const removeSlide = (i) => {
-    if (post.slides.length === 1) return;
+    if (post.slides.length === 1 || busy === 'upload') return;
     update((p) => p.slides.splice(i, 1));
     setImages((im) => im.filter((_, k) => k !== i));
     setReports({});
     setSel(Math.max(0, i - 1));
   };
   const moveSlideTo = (from, to) => {
-    if (from === to || to < 0 || to >= post.slides.length) return;
+    if (busy === 'upload' || from === to || to < 0 || to >= post.slides.length) return;
     update((p) => (p.slides = reorder(p.slides, from, to)));
     setImages((im) => reorder(im, from, to));
     setReports({});
@@ -545,7 +547,7 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
   const thumbEls = useRef([]);
   const dragRef = useRef(null);
   const onThumbPointerDown = (e, i) => {
-    if (e.button !== 0) return;
+    if (e.button !== 0 || busy === 'upload') return;
     if (e.pointerType !== 'mouse' && !e.target.closest('.drag-handle')) return;
     dragRef.current = { from: i, to: i, x: e.clientX, y: e.clientY, active: false };
     const targetAt = (x, y) => {
@@ -783,7 +785,7 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
             </button>
           )}
           {post.format !== 'reel' && post.format !== 'single' && post.slides.length < maxSlides && (
-            <button className="add-slide" onClick={() => setGallery('add')}>+ 장 추가</button>
+            <button className="add-slide" onClick={() => setGallery('add')} disabled={busy === 'upload'}>+ 장 추가</button>
           )}
         </nav>
 
@@ -855,14 +857,14 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
           {tab === 'slide' && !onClosing && (
             <div className="panel-body">
               <div className="slide-tools">
-                <button onClick={() => moveSlide(sel, -1)} disabled={sel === 0}>↑</button>
-                <button onClick={() => moveSlide(sel, 1)} disabled={sel === post.slides.length - 1}>↓</button>
+                <button onClick={() => moveSlide(sel, -1)} disabled={sel === 0 || busy === 'upload'}>↑</button>
+                <button onClick={() => moveSlide(sel, 1)} disabled={sel === post.slides.length - 1 || busy === 'upload'}>↓</button>
                 {!isLayout && (
                   <button onClick={() => exportOne(sel)} disabled={!!busy || blocked}>
                     {busy === 'one' ? '만드는 중…' : `이 장만 ${format.toUpperCase()} 받기`}
                   </button>
                 )}
-                <button className="danger" onClick={() => removeSlide(sel)} disabled={post.slides.length === 1}>이 장 삭제</button>
+                <button className="danger" onClick={() => removeSlide(sel)} disabled={post.slides.length === 1 || busy === 'upload'}>이 장 삭제</button>
               </div>
 
               {templateChoices.length > 1 && (
@@ -1008,7 +1010,7 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
             </div>
           )}
 
-          {tab === 'source' && isCuration && (
+          {tab === 'source' && isCuration && !isLayout && (
             <SourcePanel
               post={post}
               brandHandle={ctx.brand.handle}

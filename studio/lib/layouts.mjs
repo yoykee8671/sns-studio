@@ -7,14 +7,19 @@ import { readFile, writeFile, mkdir, readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { CONTENT_ROOT } from './store.mjs';
 import { TEMPLATES } from './templates/index.mjs';
+import { STICKER_TYPES } from './stickers.mjs';
 import { renumberSlides } from './templates/sets.mjs';
 import { isRatio, DEFAULT_RATIO } from './templates/sizes.mjs';
 
 const DIR = path.join(CONTENT_ROOT, '_layouts');
 const HIDDEN_FILE = path.join(DIR, '_hidden.json');
 const LAYOUT_ID = /^l-[a-z0-9]{6,20}$/;
-// Slide keys that carry content, never layout.
-const CONTENT_KEYS = ['media', 'mediaType', 'imageSha256', 'image', 'focus', 'zoom'];
+// Slide keys that carry content, never layout: media, plus every template's text fields
+// (a slide switched between templates can still hold the old template's text).
+const CONTENT_KEYS = new Set([
+  'media', 'mediaType', 'imageSha256', 'image', 'focus', 'zoom',
+  ...Object.values(TEMPLATES).flatMap((t) => t.meta.fields.map((f) => f.key)),
+]);
 
 export const isLayoutId = (id) => LAYOUT_ID.test(id ?? '');
 const fileOf = (id) => {
@@ -32,10 +37,17 @@ export function stripSlides(post) {
     if (!meta) throw new Error(`unknown template: ${key}`);
     const out = { ...meta.newSlide(post) };
     for (const [k, v] of Object.entries(slide)) {
-      if (CONTENT_KEYS.includes(k) || meta.fields.some((f) => f.key === k)) continue;
+      if (CONTENT_KEYS.has(k)) continue;
       out[k] = structuredClone(v);
     }
-    if (slide.template && slide.template !== post.template) out.template = slide.template;
+    // Stickers stay as design (type, place, size, color); their written text resets.
+    if (Array.isArray(out.stickers)) {
+      out.stickers = out.stickers.map((st) => {
+        const text = STICKER_TYPES[st.type]?.defaults?.text;
+        return 'text' in st ? { ...st, text: text ?? '' } : st;
+      });
+    }
+    if (key !== post.template) out.template = key;
     else delete out.template;
     return out;
   });

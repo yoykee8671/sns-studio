@@ -111,3 +111,35 @@ test('a built-in copy becomes a one-slide layout; hidden list keeps known keys o
   assert.equal(layouts.isLayoutId('../x'), false);
   JSON.parse(await readFile(path.join(process.env.STUDIO_CONTENT_ROOT, '_layouts', `${l.id}.json`), 'utf8'));
 });
+
+test('legacy published posts without publishedAt get a fresh 7 days, not an instant purge', async () => {
+  const p = await store.createPost({
+    brand: BRAND, slug: 'legacy', template: 'editorial-photo', format: 'carousel', contentType: 'knowledge',
+    slides: [{ headline: 'x', media: 'media/a.jpg', mediaType: 'image', stickers: [] }],
+  });
+  const dir = store.postDir(BRAND, p.id);
+  const old = new Date(Date.now() - 30 * DAY).toISOString();
+  await writeFile(path.join(dir, 'post.json'), JSON.stringify({ ...p, status: 'published', updatedAt: old }));
+  const purged = await store.expirePublishedMedia();
+  assert.ok(!purged.includes(`${BRAND}/${p.id}`));
+  const after = await store.readPost(BRAND, p.id);
+  assert.equal(after.slides[0].media, 'media/a.jpg');
+  assert.ok(after.publishedAt && Date.now() - Date.parse(after.publishedAt) < 60000);
+  assert.equal(after.updatedAt, old);
+});
+
+test('text left over from a previous template and sticker text are not saved into a layout', async () => {
+  const post = {
+    brand: BRAND, format: 'carousel', contentType: 'knowledge', template: 'editorial-photo',
+    slides: [{
+      template: 'quote-dark', headline: 'old headline', source: '출처 | someone',
+      stickers: [{ id: 'p', type: 'postit', text: 'my note', x: 10, y: 20 }],
+    }, { template: 'no-such-template', headline: 'x' }],
+  };
+  const [a, b] = layouts.stripSlides(post);
+  assert.ok(!a.headline && !a.source);
+  assert.notEqual(a.stickers[0].text, 'my note');
+  assert.equal(a.stickers[0].x, 10);
+  assert.equal(a.template, 'quote-dark');
+  assert.equal(b.template, undefined, 'unknown template keys fall back to the post template');
+});
