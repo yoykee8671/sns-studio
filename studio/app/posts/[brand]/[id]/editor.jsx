@@ -34,7 +34,9 @@ const assetUrl = (brandId, rel) =>
 
 const isVideoPath = (rel) => /\.(mp4|mov|m4v|webm)$/i.test(rel ?? '');
 
-function mediaOf(brandId, postId, slide) {
+// closingRel: the account's closing file, shown by 끝장 이미지 slides without a photo.
+function mediaOf(brandId, postId, slide, closingRel = null, tMeta = null) {
+  if (!slide.media && tMeta?.brandClosing && closingRel) return { src: assetUrl(brandId, closingRel), type: 'image' };
   if (slide.media) {
     return {
       src: `/api/posts/${brandId}/${postId}/${slide.media.split('/').map(encodeURIComponent).join('/')}`,
@@ -161,7 +163,7 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
       .then((d) => {
         if (d.error) throw new Error(d.error);
         setCtx({ brand: d.brand, logoSvg: d.logoSvg, publish: d.publish, closing: d.closing });
-        setPost(d.post);
+        setPost(kind === 'layout' ? d.post : { ...d.post, format: autoFormat(d.post) });
         setImages(d.images);
       })
       .catch((e) => setLoadError(e.message));
@@ -248,8 +250,9 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
   const size = template && post ? template.meta.sizeFor(post) : { width: 1080, height: 1350 };
   const slideHtml = useCallback(
     (p, i, mode) => {
-      const { src, type } = mediaOf(brandId, postId, p.slides[i]);
-      return resolveTemplate(p, p.slides[i]).renderSlide({
+      const t = resolveTemplate(p, p.slides[i]);
+      const { src, type } = mediaOf(brandId, postId, p.slides[i], ctx.closing, t.meta);
+      return t.renderSlide({
         brand: ctx.brand,
         post: p,
         slide: p.slides[i],
@@ -456,11 +459,10 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
   // Template for slides created by a multi-file upload: the current slide's, when it
   // shows photos; otherwise the post's, otherwise any photo template of this format.
   const photoTemplateKey = (p, i) => {
+    const fits = (k) =>
+      TEMPLATES[k]?.meta.mediaTypes.length && TEMPLATES[k].meta.formats.includes(p.format) && TEMPLATES[k].meta.role !== 'last';
     const candidates = [p.slides[i]?.template ?? p.template, p.template, 'inner-photo-split', 'editorial-photo'];
-    return (
-      candidates.find((k) => TEMPLATES[k]?.meta.mediaTypes.length && TEMPLATES[k].meta.formats.includes(p.format)) ??
-      Object.keys(TEMPLATES).find((k) => TEMPLATES[k].meta.mediaTypes.length && TEMPLATES[k].meta.formats.includes(p.format))
-    );
+    return candidates.find(fits) ?? Object.keys(TEMPLATES).find(fits);
   };
 
   /**
@@ -477,12 +479,24 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
     const lastRole = (p) => resolveTemplate(p, p.slides[p.slides.length - 1]).meta.role === 'last';
     const tail = post.slides.length > 1 && lastRole(post) ? 1 : 0;
     const scanEnd = post.slides.length - tail;
-    const plan = [{ index: sel }];
+    const selIsLast = resolveTemplate(post, post.slides[sel]).meta.role === 'last';
+    const plan = [files.length > 1 && selIsLast && multi ? { isNew: true } : { index: sel }];
     let total = post.slides.length;
+    if (plan[0].isNew) {
+      if (total >= maxSlides) {
+        notify(`장 수가 이미 ${maxSlides}장이라 더 추가할 수 없어요.`, 'error');
+        return;
+      }
+      total++;
+    }
     for (let k = 1; k < files.length && multi; k++) {
       const prev = plan[plan.length - 1];
       let j = prev.isNew ? scanEnd : prev.index + 1;
-      while (j < scanEnd && (!usesMediaAt(post, j) || post.slides[j].media || post.slides[j].image)) j++;
+      // Fill only empty photo slides — never a last-page slide (끝장 이미지, 팔로우 카드).
+      const free = (x) =>
+        usesMediaAt(post, x) && !post.slides[x].media && !post.slides[x].image &&
+        resolveTemplate(post, post.slides[x]).meta.role !== 'last';
+      while (j < scanEnd && !free(j)) j++;
       if (j < scanEnd) plan.push({ index: j });
       else if (total < maxSlides) {
         plan.push({ isNew: true });
@@ -554,7 +568,6 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
     update((p) => {
       const s = tMeta.newSlide(p);
       const key = templateKey ?? prevSlide?.template;
-      if (key === 'closing-image' && ctx.closing) s.image = ctx.closing;
       if (key && key !== p.template) s.template = key;
       else delete s.template;
       p.slides.push(s);
@@ -861,7 +874,7 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
                 </div>
                 <span className="thumb-num">
                   {i + 1}
-                  {mediaOf(brandId, postId, s).type === 'video' && ' ▶'}
+                  {mediaOf(brandId, postId, s, ctx.closing).type === 'video' && ' ▶'}
                   {reports[i]?.issues.length > 0 && <span className="dot" title="QA 경고" />}
                 </span>
               </button>
@@ -1200,7 +1213,9 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
               updateSlide(sel, {
                 template: key === post.template ? undefined : key,
                 ...photoPatch(TEMPLATES[key].meta, slide),
-                ...(key === 'closing-image' && !slide.media && !slide.image && ctx.closing ? { image: ctx.closing } : {}),
+                ...(key === 'closing-image'
+                  ? { media: undefined, mediaType: undefined, imageSha256: undefined, image: undefined }
+                  : {}),
               });
             } else addSlide(key);
             setGallery(null);

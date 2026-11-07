@@ -29,7 +29,8 @@ test('template meta is well-formed (role, formats, fields)', () => {
   for (const [key, t] of Object.entries(TEMPLATES)) {
     assert.ok(ROLE_ORDER.includes(t.meta.role), `${key}: unknown role ${t.meta.role}`);
     assert.ok(t.meta.formats.length > 0, `${key}: no formats`);
-    assert.ok(t.meta.fields.length > 0, `${key}: no fields`);
+    // The 끝장 image (brandClosing) is a picture only; every other template has text.
+    if (!t.meta.brandClosing) assert.ok(t.meta.fields.length > 0, `${key}: no fields`);
     assert.ok(typeof t.meta.label === 'string' && t.meta.label, `${key}: no label`);
     const size = t.meta.sizeFor({ format: t.meta.formats[0] });
     assert.ok(size.width > 0 && size.height > 0, `${key}: bad size`);

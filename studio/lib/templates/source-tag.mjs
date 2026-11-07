@@ -25,11 +25,13 @@ const sourceField = {
   hint: '비우거나 출처 표시를 숨기면 나오지 않아요.',
 };
 
-function tag(slide, brand) {
+function tag(slide, brand, onPhoto) {
   const pos = POSITIONS[slide.sourcePos] ?? POSITIONS.tl;
+  // On full-bleed photos (지식형) keep the old line's shadow so it reads on bright pictures.
+  const shadow = onPhoto && slide.shadow !== 'off' ? 'text-shadow: 0 1px 8px rgba(0,0,0,.45);' : '';
   return `<style>
   .u-source { position: absolute; ${pos}; z-index: 6; max-width: 78%; font-size: 21px; line-height: 1.3;
-    font-weight: 500; opacity: .82; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    font-weight: 500; opacity: .82; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; ${shadow} }
 </style>
 <div class="u-source" data-field="source" data-max-lines="1" data-label="출처" style="${fieldStyle(slide, 'source', 21)}">${renderMarkup(slide.source, brandPalette(brand))}</div>`;
 }
@@ -38,6 +40,7 @@ function tag(slide, brand) {
 export function withSource(key, mod) {
   const native = NATIVE[key];
   const { meta } = mod;
+  if (meta.brandClosing) return mod; // the 끝장 image carries nothing on top
   if (native) {
     return {
       ...mod,
@@ -61,7 +64,7 @@ export function withSource(key, mod) {
       // Before the runtime <script> so QA measures it like any other field.
       const at = html.lastIndexOf('<script>');
       const cut = at > 0 ? at : html.lastIndexOf('</body>');
-      return html.slice(0, cut) + tag(o.slide, o.brand) + html.slice(cut);
+      return html.slice(0, cut) + tag(o.slide, o.brand, Boolean(own)) + html.slice(cut);
     },
   };
 }

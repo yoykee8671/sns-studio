@@ -14,7 +14,9 @@ export const meta = {
   sizeFor: feedSizeFor,
   fields: [],
   options: [],
-  // slide.image is filled with the brand's closing image when the slide is created.
+  // Without an uploaded photo the slide shows the account's current closing file
+  // (resolved at render time, so replacing or renaming that file updates every post).
+  brandClosing: true,
   newSlide: () => ({ template: 'closing-image', stickers: [] }),
   sample: {},
 };

@@ -146,7 +146,6 @@ test('text left over from a previous template and sticker text are not saved int
 
 test('new post ids follow <account>_<YYMMDD>-<NN> in Korea time', async () => {
   const id1 = await store.newPostId(BRAND, new Date('2026-11-07T16:30:00Z')); // 11-08 01:30 KST
-  assert.equal(id1, `${BRAND}_261108-01`);
-  await mkdir(store.postDir(BRAND, id1), { recursive: true });
+  assert.equal(id1, `${BRAND}_261108-01`); // the folder is claimed by newPostId itself
   assert.equal(await store.newPostId(BRAND, new Date('2026-11-07T16:30:00Z')), `${BRAND}_261108-02`);
 });

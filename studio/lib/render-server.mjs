@@ -8,7 +8,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import ffmpegPath from 'ffmpeg-static';
 import { chromium } from 'playwright-core';
-import { ROOT, loadBrand, loadLogoSvg, imageStatus, mediaFile, mediaTypeOf } from './store.mjs';
+import { ROOT, loadBrand, loadLogoSvg, imageStatus, mediaFile, mediaTypeOf, closingImage, resolveAsset } from './store.mjs';
 import { exportSlideSvg } from './svg-export.mjs';
 import { getTemplate, resolveTemplate } from './templates/index.mjs';
 import { needsPermission } from './post-rules.mjs';
@@ -111,6 +111,8 @@ export async function renderPost(post, { format, quality = 92, allowChanged = fa
   const logoSvg = await loadLogoSvg(brand);
   // setContent() pages have no base URL: the profile photo goes in as a data URL.
   if (brand.avatarFile) brand.avatarSrc = await dataUrl(brand.avatarFile);
+  const closingRel = await closingImage(brand);
+  const closingFile = closingRel ? resolveAsset(brand, closingRel) : null;
 
   const status = await imageStatus(brand, post);
   const bad = status.flatMap((s, i) => (s.state === 'changed' || s.state === 'missing' ? [`${i + 1}장 (${s.state})`] : []));
@@ -132,7 +134,9 @@ export async function renderPost(post, { format, quality = 92, allowChanged = fa
       // stale media fields left over from a template switch must not drive the
       // video-composite path (templates without [data-media-box] would crash it).
       const usesMedia = tMeta.mediaTypes.length > 0 && tMeta.usesMedia?.(slide) !== false;
-      const file = usesMedia ? mediaFile(brand, post, slide) : null;
+      const file = usesMedia
+        ? (slide.media ? mediaFile(brand, post, slide) : tMeta.brandClosing ? closingFile : mediaFile(brand, post, slide))
+        : null;
       const isVideoFile = Boolean(file) && mediaTypeOf(slide) === 'video';
       const isVideo = isVideoFile && tMeta.mediaTypes.includes('video');
       const base = { brand, post, slide, index: i, logoSvg };

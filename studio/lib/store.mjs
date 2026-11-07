@@ -241,11 +241,19 @@ export async function newPostId(brandId, now = new Date()) {
   assertId(brandId);
   const kst = new Date(now.getTime() + 9 * 3600 * 1000).toISOString();
   const day = `${kst.slice(2, 4)}${kst.slice(5, 7)}${kst.slice(8, 10)}`;
-  const exists = (pid) => stat(postDir(brandId, pid)).then(() => true, () => false);
-  for (let n = 1; ; n++) {
+  // The folder is claimed with a non-recursive mkdir: of two concurrent creates only one
+  // can win a name, the other moves on to the next number.
+  await mkdir(path.join(CONTENT_ROOT, brandId), { recursive: true });
+  for (let n = 1; n < 1000; n++) {
     const id = `${brandId}_${day}-${String(n).padStart(2, '0')}`;
-    if (!(await exists(id))) return id;
+    try {
+      await mkdir(postDir(brandId, id));
+      return id;
+    } catch (e) {
+      if (e.code !== 'EEXIST') throw e;
+    }
   }
+  throw new Error('오늘 만든 게시물이 너무 많아요.');
 }
 
 /**
@@ -253,19 +261,16 @@ export async function newPostId(brandId, now = new Date()) {
  * brand's 끝장 이미지 is added as a regular (swappable, deletable) slide; closing-image
  * slides without a picture get the brand's closing image. Mutates and returns slides.
  */
-export async function withClosingSlide(brandId, format, slides, template) {
-  if (format !== 'carousel') return slides;
+export async function withClosingSlide(brandId, format, slides, template, { always = false } = {}) {
+  if (format !== 'carousel') return true;
   const brand = await loadBrand(brandId).catch(() => null);
-  if (!brand) return slides; // unknown account (tests, removed brand): nothing to add
+  if (!brand) return false; // unknown account (tests) or a failed read: nothing done
   const closing = await closingImage(brand);
   const roleOf = (s) => TEMPLATES[s.template ?? template]?.meta.role;
-  if (closing && roleOf(slides[slides.length - 1] ?? {}) !== 'last') {
+  if (closing && (always || roleOf(slides[slides.length - 1] ?? {}) !== 'last')) {
     slides.push({ ...TEMPLATES['closing-image'].meta.newSlide(), template: 'closing-image' });
   }
-  for (const s of slides) {
-    if ((s.template ?? template) === 'closing-image' && !s.media && !s.image && closing) s.image = closing;
-  }
-  return slides;
+  return true;
 }
 
 /** Creates content/<brand>/<id>/post.json under an automatic folder name (newPostId). */
@@ -335,9 +340,17 @@ export async function readPost(brandId, postId) {
   const post = normalize(JSON.parse(await readFile(file, 'utf8')));
   // Carousels used to get the closing image appended at export time; it is a real slide
   // now. Older posts gain it once (kept on their next save).
+  // Their export always ended on the closing image (also after a 팔로우 카드), so every old
+  // carousel gets it; marked done only when the brand could be read.
   if (!post.closingMigrated) {
-    await withClosingSlide(brandId, post.format, post.slides, post.template).catch(() => {});
-    post.closingMigrated = true;
+    const done = await withClosingSlide(brandId, post.format, post.slides, post.template, { always: true })
+      .catch(() => false);
+    if (done) post.closingMigrated = true;
+  }
+  // Drafts from the first version of this change stored a copy of the closing path;
+  // the 끝장 slide now always follows the account's current closing file.
+  for (const s of post.slides) {
+    if (resolveTemplate(post, s).meta.brandClosing && !s.media && s.image?.startsWith('closing/')) delete s.image;
   }
   return post;
 }
@@ -521,6 +534,8 @@ export async function imageStatus(brand, post) {
         // Purged posts also pass — they render the empty-photo placeholder by design.
         const t = resolveTemplate(post, slide).meta;
         if (!t.mediaTypes.length || t.usesMedia?.(slide) === false) return { state: 'none' };
+        // 끝장 이미지 without its own photo uses the account's closing file: nothing to pin.
+        if (t.brandClosing && !slide.media) return { state: 'none' };
         if (post.mediaPurged && !slide.media && !slide.image) return { state: 'none' };
         const file = mediaFile(brand, post, slide);
         if (!file) return { state: 'missing' };
