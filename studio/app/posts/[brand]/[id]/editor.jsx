@@ -136,6 +136,10 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
   const [modal, setModal] = useState(null);
   const [tab, setTab] = useState('slide');
   const [format, setFormat] = useState('png');
+  // Phones save to the photo library: JPG keeps photos small (PNG stays one tap away in ⋯).
+  useEffect(() => {
+    if (window.innerWidth <= 920) setFormat('jpg');
+  }, []);
   const [capDraft, setCapDraft] = useState(null); // { detailed, short, hashtags, view }
   const [gallery, setGallery] = useState(null); // null | 'switch' (현재 장) | 'add' (새 장)
   const [loadError, setLoadError] = useState(null);
@@ -475,6 +479,17 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
     }
   };
 
+  // Phones that can share files (iOS Safari, Android Chrome) save each slide to the photo
+  // library through the share sheet instead of downloading a zip.
+  const canSavePhotos = () => {
+    try {
+      return window.innerWidth <= 920 && Boolean(navigator.canShare?.({
+        files: [new File([new Uint8Array(1)], 'a.jpg', { type: 'image/jpeg' })],
+      }));
+    } catch {
+      return false;
+    }
+  };
   const exportAs = async (fmt) => {
     setBusy(fmt);
     try {
@@ -484,6 +499,23 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
         body: JSON.stringify({ post, format: fmt }),
       });
       if (!res.ok) throw new Error(await errorOf(res));
+      if (fmt !== 'svg' && canSavePhotos()) {
+        const { default: JSZip } = await import('jszip');
+        const zip = await JSZip.loadAsync(await res.blob());
+        const TYPES = { png: 'image/png', jpg: 'image/jpeg', mp4: 'video/mp4' };
+        const files = [];
+        let caption = '';
+        for (const name of Object.keys(zip.files).sort()) {
+          const ext = name.split('.').pop().toLowerCase();
+          if (name === 'caption.txt') caption = await zip.files[name].async('string');
+          else if (TYPES[ext]) {
+            files.push(new File([await zip.files[name].async('blob')], `${postId}_${name}`, { type: TYPES[ext] }));
+          }
+        }
+        // The share sheet needs a fresh tap: the export took longer than iOS keeps the first one.
+        setModal({ kind: 'savePhotos', files, caption });
+        return;
+      }
       await downloadBlob(res, 'export.zip');
       if (fmt === 'svg') setModal({ kind: 'figma' });
       else notify(`${post.slides.length}장과 캡션을 내려받았어요.`);
@@ -644,19 +676,47 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
     );
   };
   // templateKey undefined = inherit the previous slide's template so a chosen layout continues.
-  const addSlide = (templateKey) => {
-    const prevSlide = post.slides[post.slides.length - 1];
-    const picked = templateKey ? TEMPLATES[templateKey] : resolveTemplate(post, prevSlide);
-    const tMeta = picked.meta;
-    update((p) => {
-      const s = tMeta.newSlide(p);
-      const key = templateKey ?? prevSlide?.template;
-      if (key && key !== p.template) s.template = key;
-      else delete s.template;
-      p.slides.push(s);
+  // New slides go before a trailing last-page slide (끝장 이미지, 팔로우 카드).
+  const insertIndex = (p) =>
+    p.slides.length > 1 && resolveTemplate(p, p.slides[p.slides.length - 1]).meta.role === 'last'
+      ? p.slides.length - 1
+      : p.slides.length;
+  const mediaStateOf = (p, slide) => {
+    const t = resolveTemplate(p, slide).meta;
+    if (!t.mediaTypes.length || t.usesMedia?.(slide) === false || (t.brandClosing && !slide.media)) return 'none';
+    return 'missing';
+  };
+  const insertSlide = (slide, at) => {
+    update((p) => p.slides.splice(at, 0, slide));
+    setImages((im) => {
+      const next = [...im];
+      next.splice(at, 0, { state: mediaStateOf(post, slide) });
+      return next;
     });
-    setImages((im) => [...im, { state: tMeta.mediaTypes.length && tMeta.usesMedia?.(tMeta.newSlide(post)) !== false ? 'missing' : 'none' }]);
-    setSel(post.slides.length);
+    setReports({});
+    setSel(at);
+  };
+  const addSlide = (templateKey) => {
+    const s = TEMPLATES[templateKey].meta.newSlide(post);
+    if (templateKey !== post.template) s.template = templateKey;
+    else delete s.template;
+    insertSlide(s, insertIndex(post));
+  };
+  // 현재 템플릿 복제: the selected slide's template and design settings (options, sliders,
+  // typography/colors, positions, stickers) as a new slide right after it — text and
+  // photo/video left empty.
+  const duplicateSlide = (i) => {
+    const src = post.slides[i];
+    const key = src.template ?? post.template;
+    const meta = TEMPLATES[key].meta;
+    const copy = { ...meta.newSlide(post) };
+    for (const [k, v] of Object.entries(structuredClone(src))) {
+      if (MEDIA_KEYS.includes(k) || meta.fields.some((f) => f.key === k)) continue;
+      copy[k] = v;
+    }
+    if (key !== post.template) copy.template = key;
+    else delete copy.template;
+    insertSlide(copy, i + 1);
   };
   const removeSlide = (i) => {
     if (post.slides.length === 1 || busy === 'upload') return;
@@ -1340,7 +1400,7 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
           </button>
         ) : (
           <>
-            <button onClick={save} disabled={!!busy}>{busy === 'save' ? '저장 중…' : '저장'}</button>
+            <button onClick={save} disabled={!!busy}>{busy === 'save' ? '저장 중…' : '임시 저장'}</button>
             <button onClick={() => exportAs(format)} disabled={!!busy || blocked}>
               {busy === format ? '만드는 중…' : '내려받기'}
             </button>
@@ -1433,11 +1493,11 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
           logoSvg={ctx.logoSvg}
           current={gallery === 'switch' ? (slide?.template ?? post.template) : undefined}
           title={gallery === 'switch' ? `${sel + 1}장의 템플릿 고르기` : '새 장의 템플릿 고르기'}
-          quickLabel={gallery === 'add' ? '직전 장과 같게 추가' : undefined}
+          quickLabel={gallery === 'add' ? '현재 템플릿 복제' : undefined}
           hidden={library.hidden}
           mine={library.layouts}
           onQuick={() => {
-            addSlide();
+            duplicateSlide(Math.min(sel, post.slides.length - 1));
             setGallery(null);
           }}
           onPick={(key) => {
@@ -1456,10 +1516,7 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
             if (gallery === 'switch') {
               update((p) => (p.slides[sel] = designSlide(p, layout.slide, p.slides[sel])));
             } else {
-              update((p) => p.slides.push(designSlide(p, layout.slide)));
-              const t = TEMPLATES[layout.slide.template].meta;
-              setImages((im) => [...im, { state: t.mediaTypes.length ? 'missing' : 'none' }]);
-              setSel(post.slides.length);
+              insertSlide(designSlide(post, layout.slide), insertIndex(post));
             }
             setGallery(null);
           }}
@@ -1528,6 +1585,45 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
                 <div className="modal-actions">
                   <button onClick={() => setModal(null)}>취소</button>
                   <button className="primary" onClick={doPublish}>발행하기</button>
+                </div>
+              </>
+            )}
+            {modal.kind === 'savePhotos' && (
+              <>
+                <h2>{modal.files.length}장을 사진함에 저장</h2>
+                <p>
+                  아래 버튼을 누르고 공유 창에서 <b>&lsquo;이미지 {modal.files.length}개 저장&rsquo;</b>(안드로이드는
+                  &lsquo;갤러리&rsquo;·&lsquo;파일에 저장&rsquo;)을 고르면 한 번에 들어가요.
+                </p>
+                <div className="modal-actions">
+                  {modal.caption && (
+                    <button
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(modal.caption);
+                          notify('캡션을 복사했어요.');
+                        } catch {
+                          notify('캡션을 복사하지 못했어요.', 'error');
+                        }
+                      }}
+                    >
+                      캡션 복사
+                    </button>
+                  )}
+                  <button
+                    className="primary"
+                    onClick={async () => {
+                      try {
+                        await navigator.share({ files: modal.files });
+                        setModal(null);
+                        notify(`${modal.files.length}장을 보냈어요.`);
+                      } catch (e) {
+                        if (e?.name !== 'AbortError') notify(`저장하지 못했어요: ${e.message}`, 'error');
+                      }
+                    }}
+                  >
+                    사진함에 저장
+                  </button>
                 </div>
               </>
             )}
