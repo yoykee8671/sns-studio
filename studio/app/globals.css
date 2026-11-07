@@ -525,7 +525,7 @@ button.tool-dark.on { background: #1d1d1f; border-color: #1d1d1f; box-shadow: in
   /* Phone: preview (pinned while the settings scroll) → thumbnails → tabs → form → bottom bar. */
   .workspace { display: flex; flex-direction: column; min-height: 0; }
   .stage {
-    flex: none; height: 42dvh; min-height: 250px; padding: 12px 8px 10px; gap: 8px;
+    flex: none; height: auto; padding: 12px 8px 10px; gap: 8px;
     position: sticky; top: 0; z-index: 12;
   }
   .stage-nav, .stage-hint { display: none !important; }

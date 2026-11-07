@@ -284,8 +284,15 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
     if (!stageRef.current) return;
     const ro = new ResizeObserver(([entry]) => {
       const { width, height } = entry.contentRect;
-      const arrows = window.innerWidth > 920 ? 120 : 0; // prev/next buttons beside the preview (PC)
-      const below = window.innerWidth > 920 ? 96 : 52; // ratio switch + hint under it
+      if (window.innerWidth <= 920) {
+        // Phone: the preview spans ~72% of the screen width (ratio kept); the stage grows
+        // to fit it, capped at 66% of the screen height for tall 9:16 slides.
+        const maxH = window.innerHeight * 0.66 - 52; // 52 = ratio switch under the preview
+        setScale(Math.max(0.1, Math.min(Math.min(width, window.innerWidth * 0.72) / size.width, maxH / size.height)));
+        return;
+      }
+      const arrows = 120; // prev/next buttons beside the preview (PC)
+      const below = 96; // ratio switch + hint under it
       setScale(Math.max(0.1, Math.min((width - 32 - arrows) / size.width, (height - below) / size.height)));
     });
     ro.observe(stageRef.current);
