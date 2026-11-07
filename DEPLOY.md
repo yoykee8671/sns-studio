@@ -64,9 +64,8 @@ sns.gnuol.com은 **v2(`sns-v2-app`)** 로 연결돼 있습니다. cloudflared �
   (`localhost:3100`)에서만 열립니다. 아예 끄지 않은 이유: `~/infra/watchdog`가 그 스택을
   감시하며 꺼지면 5분 안에 다시 켭니다. 완전히 끄려면 watchdog 목록에서 먼저 빼야 합니다.
   (옛 설정 백업: `~/infra/sns/docker-compose.yml.bak-20261107`)
-- 기존 Vercel 주소(v1)는 그대로 살아 있고 **Supabase에 저장**합니다. 그쪽에서 새로 만든
-  게시물은 v2에 자동으로 오지 않으니, Vercel을 끌 때 위의 "기존 Supabase 데이터 옮기기"를
-  마지막으로 한 번 더 실행하세요. (같은 게시물은 Supabase 쪽 내용으로 덮어씁니다)
+- 기존 Vercel 주소(v1)는 그대로 살아 있고 Supabase에 저장합니다. v1 게시물은 보관할 필요가
+  없다는 결정(2026-11-07)에 따라 **v2로 더 옮기지 않습니다.** Vercel·Supabase는 그냥 끄면 됩니다.
 
 되돌리기: 이 파일의 `aliases: [sns]` → `[sns-v2]`, `~/infra/sns`의 백업 설정을 복원한 뒤 두 폴더에서
 `docker compose up -d`.
