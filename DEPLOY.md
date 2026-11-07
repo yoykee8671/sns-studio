@@ -55,15 +55,18 @@ docker run --rm -v sns-v2-content:/data -v ~/infra/sns/supabase-export-YYYYMMDD:
   cp -a /src/. /data/
 ```
 
-## 운영 전환 (sns.gnuol.com → v2)
+## 운영 전환 기록 (2026-11-07 완료)
 
-cloudflared 터널은 `http://sns:3100`으로 보냅니다. 지금은 옛 컨테이너(`sns-sns-1`,
-`~/infra/sns`)가 별칭 `sns`를 갖고 있습니다.
+sns.gnuol.com은 **v2(`sns-v2-app`)** 로 연결돼 있습니다. cloudflared 터널은 `http://sns:3100`으로
+보내고, 이 별칭(`sns`)은 `docker-compose.yml`의 `tunnel` 네트워크 설정에서 v2가 갖고 있습니다.
 
-1. 위의 "기존 Supabase 데이터 옮기기"를 한 번 더 (최신본)
-2. 옛 서버 중단: `cd ~/infra/sns && docker compose down` (볼륨 없음, Supabase 데이터는 그대로)
-3. `docker-compose.yml`의 `aliases: [sns-v2]` → `aliases: [sns]` 로 바꾸고
-   `docker compose up -d`
-4. https://sns.gnuol.com 접속 확인
+- 옛 v1 맥미니 컨테이너(`sns-sns-1`, `~/infra/sns`)는 터널 네트워크에서 빠져 맥미니 안
+  (`localhost:3100`)에서만 열립니다. 아예 끄지 않은 이유: `~/infra/watchdog`가 그 스택을
+  감시하며 꺼지면 5분 안에 다시 켭니다. 완전히 끄려면 watchdog 목록에서 먼저 빼야 합니다.
+  (옛 설정 백업: `~/infra/sns/docker-compose.yml.bak-20261107`)
+- 기존 Vercel 주소(v1)는 그대로 살아 있고 **Supabase에 저장**합니다. 그쪽에서 새로 만든
+  게시물은 v2에 자동으로 오지 않으니, Vercel을 끌 때 위의 "기존 Supabase 데이터 옮기기"를
+  마지막으로 한 번 더 실행하세요. (같은 게시물은 Supabase 쪽 내용으로 덮어씁니다)
 
-되돌리기: 3번 별칭을 다시 `sns-v2`로, `cd ~/infra/sns && docker compose up -d`.
+되돌리기: 이 파일의 `aliases: [sns]` → `[sns-v2]`, `~/infra/sns`의 백업 설정을 복원한 뒤 두 폴더에서
+`docker compose up -d`.

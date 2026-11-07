@@ -32,10 +32,10 @@ services:
       start_period: 40s
     networks:
       default: {}
-      # cloudflared (wooofpay stack) lives on this network. The alias stays `sns-v2`
-      # while testing; at cutover it becomes `sns` so sns.gnuol.com points here.
+      # cloudflared (wooofpay stack) lives on this network and sends sns.gnuol.com
+      # to http://sns:3100, i.e. this container (cut over from v1 on 2026-11-07).
       tunnel:
-        aliases: [sns-v2]
+        aliases: [sns]
 
 volumes:
   content:
