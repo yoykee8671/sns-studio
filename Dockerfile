@@ -4,8 +4,14 @@ FROM node:22-slim
 
 # System Chromium for Playwright rendering, ffmpeg comes bundled via ffmpeg-static.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    chromium fontconfig fonts-noto-color-emoji \
+    chromium fontconfig fonts-noto-color-emoji ca-certificates curl \
   && rm -rf /var/lib/apt/lists/*
+
+# yt-dlp (standalone build, no Python needed) for 링크로 가져오기. Instagram changes often:
+# a rebuild picks up the latest release; `docker exec sns-v2-app yt-dlp -U` updates in place.
+RUN case "$(uname -m)" in aarch64|arm64) f=yt-dlp_linux_aarch64 ;; *) f=yt-dlp_linux ;; esac \
+  && curl -fsSL -o /usr/local/bin/yt-dlp "https://github.com/yt-dlp/yt-dlp/releases/latest/download/$f" \
+  && chmod +x /usr/local/bin/yt-dlp && /usr/local/bin/yt-dlp --version
 
 # Brand fonts (Pretendard / Freesentation / Poppins) — must match the editor preview.
 COPY deploy/fonts/ /usr/local/share/fonts/studio/

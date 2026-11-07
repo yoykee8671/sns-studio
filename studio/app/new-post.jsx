@@ -14,6 +14,7 @@ const MODES = [
   ['blank', '빈 게시물'],
   ['set', '추천 조합'],
   ['layout', '내 템플릿'],
+  ['link', '인스타 링크'],
   ['manuscript', '원고로 시작'],
 ];
 
@@ -29,6 +30,7 @@ export default function NewPost({ brands, aiReady = false, layouts = [], embedde
   // The list refreshes without resetting state; a deleted pick falls back to the first.
   const layoutId = layouts.some((l) => l.id === pickedLayout) ? pickedLayout : (layouts[0]?.id ?? null);
   const [text, setText] = useState('');
+  const [link, setLink] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
@@ -45,9 +47,11 @@ export default function NewPost({ brands, aiReady = false, layouts = [], embedde
     setBusy(true);
     setError(null);
     try {
-      const endpoint = mode === 'manuscript' ? '/api/manuscript' : '/api/posts';
+      const endpoint = mode === 'manuscript' ? '/api/manuscript' : mode === 'link' ? '/api/import' : '/api/posts';
       const body =
-        mode === 'layout'
+        mode === 'link'
+          ? { brand, url: link }
+          : mode === 'layout'
           ? { brand, layout: layoutId }
           : mode === 'set'
             ? { brand, set: setId, ratio }
@@ -91,6 +95,12 @@ export default function NewPost({ brands, aiReady = false, layouts = [], embedde
         </div>
         {mode === 'set' && <p className="note">표지부터 마지막 장까지 템플릿이 짜인 세트로 한 번에 시작해요.</p>}
         {mode === 'layout' && <p className="note">저장해 둔 장 구성과 디자인으로 시작해요. 글과 사진만 채우면 돼요.</p>}
+        {mode === 'link' && (
+          <p className="note">
+            공개 인스타그램 게시물·릴스 링크를 넣으면 영상(사진)을 가져와 원작자 표기가 된 리포스트를 만들어요.
+            원작자 허락을 &lsquo;허락 받음&rsquo;으로 바꾸기 전까지 내려받기·발행은 잠겨요.
+          </p>
+        )}
         {mode === 'manuscript' && <p className="note">긴 글을 붙여넣으면 AI가 세트 구성에 맞춰 장별로 나눠 담아요.</p>}
       </div>
       <div className="field">
@@ -145,6 +155,19 @@ export default function NewPost({ brands, aiReady = false, layouts = [], embedde
         </div>
       )}
 
+      {mode === 'link' && (
+        <div className="field">
+          <label>인스타그램 링크</label>
+          <input
+            className="text-input"
+            inputMode="url"
+            value={link}
+            onChange={(e) => setLink(e.target.value)}
+            placeholder="https://www.instagram.com/reel/…"
+          />
+        </div>
+      )}
+
       {mode === 'manuscript' && (
         <div className="field">
           <label>원고</label>
@@ -159,7 +182,7 @@ export default function NewPost({ brands, aiReady = false, layouts = [], embedde
         </div>
       )}
 
-      {mode !== 'layout' && (
+      {mode !== 'layout' && mode !== 'link' && (
         <div className="field">
           <label>사이즈</label>
           <div className="seg">
@@ -181,9 +204,11 @@ export default function NewPost({ brands, aiReady = false, layouts = [], embedde
         <button
           type="submit"
           className="primary"
-          disabled={busy || !brand || (mode === 'manuscript' && text.trim().length < 80) || (mode === 'layout' && !layoutId)}
+          disabled={busy || !brand || (mode === 'manuscript' && text.trim().length < 80) || (mode === 'layout' && !layoutId) || (mode === 'link' && !/instagram\.com\//.test(link))}
         >
-          {busy ? (mode === 'manuscript' ? '원고 나누는 중…' : '만드는 중…') : '만들기'}
+          {busy
+            ? (mode === 'manuscript' ? '원고 나누는 중…' : mode === 'link' ? '가져오는 중… (10~60초)' : '만드는 중…')
+            : mode === 'link' ? '가져오기' : '만들기'}
         </button>
       </div>
     </form>

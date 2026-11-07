@@ -38,6 +38,15 @@ Instagram은 발행할 이미지를 **공개 주소**에서 가져갑니다. 발
 공개했다가, 발행이 끝나면 지웁니다(비밀번호 없이 열리는 경로는 이것뿐).
 → `PUBLIC_BASE_URL=https://sns.gnuol.com`이 실제로 이 컨테이너를 가리킬 때만 동작합니다.
 
+## 인스타 링크로 가져오기 (yt-dlp)
+
+새 게시물 → '인스타 링크'에 공개 게시물·릴스 주소를 넣으면 영상(사진)을 받아 디깅형 리포스트를
+만듭니다(원작자 허락 전까지 내려받기·발행 잠김). 이미지에 yt-dlp가 들어 있고, 누를 때만 실행돼요.
+
+- 인스타가 바뀌어 실패하면: `docker exec sns-v2-app yt-dlp -U` (또는 이미지 다시 빌드)
+- 로그인이 필요한 게시물: 브라우저에서 내보낸 cookies.txt를 볼륨에 두고 `.env`에
+  `INSTAGRAM_COOKIES_FILE=/data/content/_secrets/instagram-cookies.txt` 설정 (쿠키는 비밀값)
+
 ## 업로드 크기
 
 Cloudflare 무료 터널은 요청 하나를 **100MB**로 제한합니다. 그보다 큰 영상은 압축해서
