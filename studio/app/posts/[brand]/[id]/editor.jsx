@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { getTemplate, resolveTemplate, TEMPLATES, isCoverSlide } from '@/lib/templates/index.mjs';
@@ -140,7 +140,8 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
   const [gallery, setGallery] = useState(null); // null | 'switch' (현재 장) | 'add' (새 장)
   const [loadError, setLoadError] = useState(null);
   const [library, setLibrary] = useState({ layouts: [], hidden: [] }); // 내 템플릿 + hidden built-ins
-  const [dragging, setDragging] = useState(null); // { from, to } while a thumbnail is dragged
+  // Thumbnail being dragged: { from, to, dx, dy, overTrash, settling } (Instagram-style).
+  const [drag, setDrag] = useState(null);
   const [uploadNote, setUploadNote] = useState(null); // "2/5" while a batch uploads
   const [menuOpen, setMenuOpen] = useState(false); // phone: the "더보기" action sheet
 
@@ -668,49 +669,129 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
   };
   const moveSlide = (i, d) => moveSlideTo(i, i + d);
 
-  // Drag to reorder thumbnails (mouse: the whole card; touch: the ⠿ handle, so the
-  // strip still scrolls). A 6px move turns a press into a drag; the click is then eaten.
+  // Reorder like Instagram's edit strip: press and hold a thumbnail (touch) or just drag
+  // it (mouse) — it lifts and follows the finger, the others slide aside to open the gap,
+  // a trash bin appears above the strip, and on release it settles into its slot.
+  // A quick swipe still scrolls the strip; the click after a drag is swallowed.
   const thumbEls = useRef([]);
+  const trashRef = useRef(null);
+  const stripRef = useRef(null);
   const dragRef = useRef(null);
+  const switchRef = useRef(null);
+  const buzz = (ms = 8) => {
+    // Vibration API on Android; on iPhone (no vibrate) an iOS 18 switch toggle gives the haptic.
+    if (navigator.vibrate && navigator.vibrate(ms)) return;
+    switchRef.current?.click();
+  };
   const onThumbPointerDown = (e, i) => {
-    if (e.button !== 0 || busy === 'upload') return;
-    if (e.pointerType !== 'mouse' && !e.target.closest('.drag-handle')) return;
-    dragRef.current = { from: i, to: i, x: e.clientX, y: e.clientY, active: false };
-    const targetAt = (x, y) => {
-      let best = dragRef.current.to;
-      let bestD = Infinity;
-      thumbEls.current.forEach((el, k) => {
-        if (!el || k >= post.slides.length) return;
-        const r = el.getBoundingClientRect();
-        const d = Math.hypot(x - (r.left + r.width / 2), y - (r.top + r.height / 2));
-        if (d < bestD) [best, bestD] = [k, d];
-      });
-      return best;
+    if (e.button !== 0 || busy === 'upload' || post.slides.length < 2) return;
+    const touch = e.pointerType !== 'mouse';
+    const rects = thumbEls.current.slice(0, post.slides.length).map((el) => el.getBoundingClientRect());
+    const d = { from: i, to: i, x0: e.clientX, y0: e.clientY, rects, id: e.pointerId, lifted: false };
+    dragRef.current = d;
+    let timer = null;
+    const lift = () => {
+      d.lifted = true;
+      buzz(12);
+      setDrag({ from: i, to: i, dx: 0, dy: 0, overTrash: false });
     };
-    const onMove = (ev) => {
-      const d = dragRef.current;
-      if (!d) return;
-      if (!d.active && Math.hypot(ev.clientX - d.x, ev.clientY - d.y) < 6) return;
-      d.active = true;
-      ev.preventDefault();
-      d.to = targetAt(ev.clientX, ev.clientY);
-      setDragging({ from: d.from, to: d.to });
+    const blockScroll = (ev) => {
+      if (d.lifted) ev.preventDefault();
     };
-    const onUp = () => {
+    const cleanup = () => {
+      clearTimeout(timer);
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
-      const d = dragRef.current;
-      setDragging(null);
-      if (d?.active) {
-        moveSlideTo(d.from, d.to);
-        d.eatClick = true;
-        setTimeout(() => (dragRef.current = null), 0);
-      } else dragRef.current = null;
+      window.removeEventListener('touchmove', blockScroll);
     };
+    const onMove = (ev) => {
+      if (ev.pointerId !== d.id) return;
+      const dx = ev.clientX - d.x0;
+      const dy = ev.clientY - d.y0;
+      if (!d.lifted) {
+        if (touch) {
+          if (Math.hypot(dx, dy) > 8) { // moved before the hold finished: it's a scroll
+            cleanup();
+            dragRef.current = null;
+          }
+          return;
+        }
+        if (Math.hypot(dx, dy) < 6) return;
+        lift();
+      }
+      ev.preventDefault();
+      const cx = d.rects[d.from].left + d.rects[d.from].width / 2 + dx;
+      let to = d.to;
+      let best = Infinity;
+      d.rects.forEach((r, k) => {
+        const dist = Math.abs(cx - (r.left + r.width / 2));
+        if (dist < best) [best, to] = [dist, k];
+      });
+      const t = trashRef.current?.getBoundingClientRect();
+      const overTrash = Boolean(t) && ev.clientX > t.left - 24 && ev.clientX < t.right + 24 &&
+        ev.clientY > t.top - 24 && ev.clientY < t.bottom + 24;
+      if (to !== d.to || overTrash !== d.overTrash) buzz(6);
+      Object.assign(d, { to, overTrash });
+      setDrag({ from: d.from, to, dx, dy, overTrash });
+    };
+    const onUp = () => {
+      cleanup();
+      if (!d.lifted) {
+        dragRef.current = null;
+        return;
+      }
+      d.eatClick = true;
+      setTimeout(() => {
+        if (dragRef.current === d) dragRef.current = null;
+      }, 400);
+      if (d.overTrash) {
+        setDrag(null);
+        removeSlide(d.from);
+        notify(`${d.from + 1}장을 지웠어요. 저장하기 전이면 나가서 되돌릴 수 있어요.`);
+        return;
+      }
+      // Settle: glide into the target slot, then commit the new order.
+      setDrag({ from: d.from, to: d.to, dx: 0, dy: 0, settling: true });
+      setTimeout(() => {
+        setDrag(null);
+        moveSlideTo(d.from, d.to);
+      }, 190);
+    };
+    if (touch) timer = setTimeout(lift, 280);
     window.addEventListener('pointermove', onMove, { passive: false });
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onUp);
+    window.addEventListener('touchmove', blockScroll, { passive: false });
+  };
+  // Where each thumbnail sits while one is being dragged (the others open the gap).
+  const thumbStyle = (i) => {
+    if (!drag || !dragRef.current) return undefined;
+    const { rects } = dragRef.current;
+    if (i === drag.from) {
+      // Lifted into a fixed layer so the strip's scroll box can't clip it; a placeholder
+      // keeps its slot open.
+      const r = rects[drag.from];
+      const scale = drag.settling ? 1 : drag.overTrash ? 0.75 : 1.12;
+      return {
+        position: 'fixed',
+        left: drag.settling ? rects[drag.to].left : r.left + drag.dx,
+        top: drag.settling ? rects[drag.to].top : r.top + drag.dy,
+        width: r.width,
+        height: r.height,
+        margin: 0,
+        transform: `scale(${scale})`,
+        transition: drag.settling
+          ? 'left .19s cubic-bezier(.2,.8,.2,1), top .19s cubic-bezier(.2,.8,.2,1), transform .19s'
+          : 'transform .12s',
+        zIndex: 50, // above the trash bin, shrinking over it like Instagram
+        opacity: drag.overTrash ? 0.85 : 1,
+      };
+    }
+    let shift = 0;
+    if (drag.from < drag.to && i > drag.from && i <= drag.to) shift = rects[i - 1].left - rects[i].left;
+    if (drag.from > drag.to && i >= drag.to && i < drag.from) shift = rects[i + 1].left - rects[i].left;
+    return { transform: `translateX(${shift}px)`, transition: 'transform .2s cubic-bezier(.2,.8,.2,1)' };
   };
 
   // 내 템플릿 (one-slide) applied to a slide: its design replaces the slide's, while the
@@ -933,26 +1014,28 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
 
         <aside className="panel">
           <div className="panel-head">
-          <nav className="thumbs" aria-label="장 목록 (끌어서 순서 변경)">
+          <nav className={`thumbs ${drag ? 'reordering' : ''}`} ref={stripRef} aria-label="장 목록 (길게 눌러 끌면 순서 변경)">
             {post.slides.map((s, i) => (
+              <Fragment key={i}>
+              {drag?.from === i && dragRef.current && (
+                <span
+                  className="thumb-placeholder"
+                  style={{ width: dragRef.current.rects[i].width, height: dragRef.current.rects[i].height }}
+                />
+              )}
               <button
-                key={i}
                 ref={(el) => (thumbEls.current[i] = el)}
-                className={[
-                  'thumb',
-                  i === sel && 'active',
-                  dragging?.from === i && 'dragging',
-                  dragging && dragging.to === i && dragging.from !== i && (dragging.from < i ? 'drop-after' : 'drop-before'),
-                ].filter(Boolean).join(' ')}
+                className={['thumb', i === sel && 'active', drag?.from === i && 'lifted'].filter(Boolean).join(' ')}
+                style={thumbStyle(i)}
                 onPointerDown={(e) => onThumbPointerDown(e, i)}
+                onContextMenu={(e) => e.preventDefault()}
                 onClick={() => {
                   if (dragRef.current?.eatClick) return;
                   setSel(i);
                 }}
                 aria-label={`${i + 1}장`}
-                title="끌어서 순서를 바꿀 수 있어요"
+                title="길게 눌러(마우스는 그냥) 끌면 순서를 바꿀 수 있어요"
               >
-                {post.slides.length > 1 && <span className="drag-handle" aria-hidden>⠿</span>}
                 <div className="thumb-frame" style={{ width: THUMB_W, height: size.height * thumbScale }}>
                   <iframe
                     ref={(el) => (thumbFrames.current[i] = el)}
@@ -968,6 +1051,7 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
                   {reports[i]?.issues.length > 0 && <span className="dot" title="QA 경고" />}
                 </span>
               </button>
+              </Fragment>
             ))}
             {/* A reel is just a one-video post: adding a slide turns it back into a carousel. */}
             {post.format !== 'single' && post.slides.length < maxSlides && (
@@ -1305,6 +1389,25 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
           </div>
         </div>
       )}
+
+      {drag && !drag.settling && stripRef.current && (() => {
+        const r = stripRef.current.getBoundingClientRect();
+        return (
+          <div
+            ref={trashRef}
+            className={`trash-zone ${drag.overTrash ? 'over' : ''}`}
+            style={{ left: r.left + r.width / 2, top: Math.max(8, r.top - 72) }}
+            aria-hidden="true"
+          >
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+              strokeLinecap="round" strokeLinejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></svg>
+          </div>
+        );
+      })()}
+      {/* iOS haptic fallback (a switch toggle produces the system tick). */}
+      <label ref={switchRef} className="haptic-switch" aria-hidden="true">
+        <input type="checkbox" switch="" tabIndex={-1} />
+      </label>
 
       {toast && <div className={`toast toast-${toast.kind}`}>{toast.text}</div>}
 

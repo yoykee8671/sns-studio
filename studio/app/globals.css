@@ -189,14 +189,16 @@ button.danger { color: var(--error); }
   user-select: none; -webkit-user-select: none; cursor: grab;
 }
 .thumb.active { border-color: var(--accent); }
-.thumb.dragging { opacity: .35; }
-.thumb.drop-before, .thumb.drop-after { border-color: var(--accent); border-style: dashed; }
-.drag-handle {
-  position: absolute; right: 4px; top: 4px; z-index: 2; font-size: 13px; line-height: 1;
-  padding: 3px 4px; border-radius: 4px; background: rgba(255,255,255,.9); color: var(--muted);
-  touch-action: none; cursor: grab; opacity: 0;
+.thumb { -webkit-touch-callout: none; will-change: transform; }
+.thumb.lifted { box-shadow: 0 12px 28px rgba(0,0,0,.28); border-radius: 10px; cursor: grabbing; }
+.thumb-placeholder { flex: none; border-radius: 10px; background: rgba(0,0,0,.06); }
+.trash-zone {
+  position: fixed; z-index: 40; transform: translateX(-50%); width: 56px; height: 56px; border-radius: 50%;
+  display: grid; place-items: center; background: rgba(29,29,31,.85); color: #fff;
+  box-shadow: 0 6px 20px rgba(0,0,0,.25); transition: transform .15s, background .15s; pointer-events: none;
 }
-.thumb:hover .drag-handle, .thumb.active .drag-handle { opacity: 1; }
+.trash-zone.over { transform: translateX(-50%) scale(1.25); background: var(--error); }
+.haptic-switch { position: fixed; left: -100px; top: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .thumb-frame { overflow: hidden; border-radius: 6px; position: relative; }
 .thumb-frame iframe { border: 0; transform-origin: 0 0; pointer-events: none; }
 .add-slide {
@@ -551,7 +553,6 @@ button.tool-dark.on { background: #1d1d1f; border-color: #1d1d1f; box-shadow: in
   .panel-head { padding: 12px 16px 0; gap: 12px; }
   .thumb { cursor: default; }
   .add-slide { width: 56px; }
-  .drag-handle { opacity: 1; font-size: 15px; padding: 4px 6px; }
   .panel-body { overflow: visible; padding: 18px 16px 24px; }
   .caption { min-height: 200px; }
 
