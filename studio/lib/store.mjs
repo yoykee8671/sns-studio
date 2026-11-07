@@ -537,6 +537,8 @@ export async function imageStatus(brand, post) {
         // 끝장 이미지 without its own photo uses the account's closing file: nothing to pin.
         if (t.brandClosing && !slide.media) return { state: 'none' };
         if (post.mediaPurged && !slide.media && !slide.image) return { state: 'none' };
+        // Nothing uploaded: the slot is simply left empty — it doesn't block export.
+        if (!slide.media && !slide.image) return { state: 'empty' };
         const file = mediaFile(brand, post, slide);
         if (!file) return { state: 'missing' };
         const buf = await readFile(file);

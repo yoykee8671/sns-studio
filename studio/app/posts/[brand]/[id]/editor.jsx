@@ -27,6 +27,7 @@ const IMAGE_STATE = {
   changed: ['파일이 바뀌었어요', 'error'],
   missing: ['파일 없음', 'error'],
   none: ['사진 없이 가요', 'ok'],
+  empty: ['안 올리면 비워서 만들어요', 'ok'],
 };
 
 const assetUrl = (brandId, rel) =>
@@ -684,7 +685,7 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
   const mediaStateOf = (p, slide) => {
     const t = resolveTemplate(p, slide).meta;
     if (!t.mediaTypes.length || t.usesMedia?.(slide) === false || (t.brandClosing && !slide.media)) return 'none';
-    return 'missing';
+    return 'empty';
   };
   const insertSlide = (slide, at) => {
     update((p) => p.slides.splice(at, 0, slide));
@@ -1219,8 +1220,8 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
                 </div>
               )}
 
-              {!isLayout && sMeta.mediaTypes.length === 0 && (slide.media || slide.image) && (
-                <p className="note">이 템플릿은 사진을 쓰지 않아요. 올린 사진은 보관돼서 사진 템플릿으로 바꾸면 다시 보여요.</p>
+              {!isLayout && sMeta.bgPhoto && (
+                <p className="note">이 템플릿에 사진을 올리면 배경으로 깔려요. 안 올리면 지금 모습 그대로예요.</p>
               )}
 
               {!isLayout && sMeta.mediaTypes.length > 0 && (

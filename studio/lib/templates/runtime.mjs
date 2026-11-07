@@ -418,7 +418,12 @@ export const escapeHtml = (s = '') =>
 
 /** Media element markup shared by templates; video autoplays only in the editor preview. */
 export function mediaTag({ src, type, mode, className, style = '' }) {
-  if (!src) return `<div class="${className} media-missing" data-media-missing>사진이나 영상을 올려주세요</div>`;
+  // No photo: the editor preview shows a hint; exports leave the slot empty (no text).
+  if (!src) {
+    return mode === 'preview'
+      ? `<div class="${className} media-missing" data-media-missing>사진이나 영상을 올려주세요</div>`
+      : `<div class="${className} media-missing media-empty" style="background:transparent"></div>`;
+  }
   if (type === 'video') {
     const play = mode === 'preview' ? ' autoplay loop' : '';
     return `<video class="${className}" data-media src="${escapeHtml(src)}" muted playsinline preload="auto"${play} style="${style}"></video>`;

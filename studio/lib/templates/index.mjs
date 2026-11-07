@@ -19,6 +19,7 @@ import * as lastFollow from './last-follow.mjs';
 import * as closingImage from './closing-image.mjs';
 import { withSource } from './source-tag.mjs';
 import { withLayout } from './layout-overrides.mjs';
+import { withBgPhoto } from './bg-photo.mjs';
 
 const MODULES = {
   'editorial-photo': editorialPhoto,
@@ -42,9 +43,10 @@ const MODULES = {
 };
 
 // Every template gets the shared 출처 field + show/hide/position options (source-tag.mjs)
-// and the per-slide 요소 옮기기 overrides (layout-overrides.mjs).
+// a photo slot (text-only ones take it as a background, bg-photo.mjs) and the per-slide
+// 요소 옮기기 overrides (layout-overrides.mjs).
 export const TEMPLATES = Object.fromEntries(
-  Object.entries(MODULES).map(([key, mod]) => [key, withLayout(withSource(key, mod))]),
+  Object.entries(MODULES).map(([key, mod]) => [key, withLayout(withBgPhoto(withSource(key, mod)))]),
 );
 
 // Gallery grouping/order: cover → any → inner → last.
