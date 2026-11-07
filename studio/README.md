@@ -54,5 +54,6 @@ node scripts/render.mjs <brand> <post-id> [--format png|jpg|svg] [--pin]
 
 ## Publishing
 
-Copy `.env.example` to `.env.local` and fill in the Instagram and Vercel Blob values.
+Copy `.env.example` to `.env.local` and fill in the Instagram values plus `PUBLIC_BASE_URL`
+(the server's public address — Instagram fetches the rendered slides from it).
 Until then the publish button shows what is missing; use the image download instead.

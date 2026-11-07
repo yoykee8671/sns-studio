@@ -10,7 +10,7 @@ export async function POST(req, { params }) {
   const { brand: brandId, id } = await params;
   if (!suggestReady()) {
     return Response.json(
-      { error: 'ANTHROPIC_API_KEY가 설정되지 않았어요. Vercel(또는 .env.local)에 키를 넣으면 캡션 초안이 켜져요.' },
+      { error: 'ANTHROPIC_API_KEY가 설정되지 않았어요. 서버 .env(또는 로컬 .env.local)에 키를 넣으면 캡션 초안이 켜져요.' },
       { status: 412 },
     );
   }

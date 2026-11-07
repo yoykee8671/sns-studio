@@ -1,5 +1,5 @@
-// Post storage: file-based (content/<brand>/<post>/post.json) by default, or Supabase
-// Storage for everything under content/ when SUPABASE_URL is configured (see blob-store.mjs).
+// Post storage: file-based, content/<brand>/<post>/post.json + media/. On the Mac mini
+// server CONTENT_ROOT points at a Docker volume so posts survive rebuilds.
 // Brand assets (logos, closing images) always come from the repo's brand folders.
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
@@ -9,12 +9,9 @@ import { STICKER_TYPES, normalizeSticker } from './stickers.mjs';
 import { resolveTemplate } from './templates/index.mjs';
 import { stripMarkup } from './templates/markup.mjs';
 import { isFontChoice } from './templates/fonts.mjs';
-import * as blob from './blob-store.mjs';
 
-export const { supabaseEnabled } = blob;
-
-// cwd is the studio folder locally and in Docker, but on Vercel the traced monorepo
-// is mounted with the app under studio/ — probe for the brands folder to find ROOT.
+// cwd is normally the studio folder; probe for the brands folder so scripts run from
+// the repo root resolve the same ROOT.
 function defaultRoot() {
   const cwd = process.cwd();
   if (existsSync(path.join(cwd, 'brands'))) return cwd;
@@ -26,7 +23,7 @@ function defaultRoot() {
 export const ROOT = process.env.STUDIO_ROOT ?? defaultRoot();
 // Posts/media live here. On a server deployment this points at the persistent disk
 // (e.g. /data/content) so drafts survive deploys; brands/assets stay in the app image.
-const CONTENT_ROOT = process.env.STUDIO_CONTENT_ROOT ?? path.join(ROOT, 'content');
+export const CONTENT_ROOT = process.env.STUDIO_CONTENT_ROOT ?? path.join(ROOT, 'content');
 const SAFE_ID = /^[a-z0-9][a-z0-9_-]*$/i;
 
 const assertId = (id) => {
@@ -66,10 +63,8 @@ export function normalizeBrandStyle(input, { isFont = isFontChoice } = {}) {
   return out;
 }
 
-const brandStyleKey = (brandId) => `${brandId}/brand-style.json`;
-
 // loadBrand runs on every asset/preview request; a short-lived cache keeps the style
-// read from adding a storage round-trip (Supabase) per request. saveBrandStyle invalidates.
+// read off the disk for most of them. saveBrandStyle refreshes it.
 const styleCache = new Map(); // brandId -> { style, at }
 const STYLE_TTL_MS = 5000;
 
@@ -85,13 +80,8 @@ export async function readBrandStyle(brandId) {
   if (hit && Date.now() - hit.at < STYLE_TTL_MS) return hit.style;
   let style = {};
   try {
-    if (supabaseEnabled) {
-      const data = await blob.getBytes(brandStyleKey(brandId));
-      style = data ? normalizeBrandStyle(JSON.parse(data.toString('utf8'))) : {};
-    } else {
-      const raw = await readFile(path.join(CONTENT_ROOT, brandId, 'brand-style.json'), 'utf8');
-      style = normalizeBrandStyle(JSON.parse(raw));
-    }
+    const raw = await readFile(path.join(CONTENT_ROOT, brandId, 'brand-style.json'), 'utf8');
+    style = normalizeBrandStyle(JSON.parse(raw));
   } catch (e) {
     if (e.code !== 'ENOENT') console.warn(`brand-style ${brandId}: ${e.message} — ignoring overrides`);
     style = {};
@@ -103,13 +93,9 @@ export async function readBrandStyle(brandId) {
 export async function saveBrandStyle(brandId, style) {
   assertId(brandId);
   const body = `${JSON.stringify(style, null, 2)}\n`;
-  if (supabaseEnabled) {
-    await blob.putObject(brandStyleKey(brandId), body, 'application/json');
-  } else {
-    const dir = path.join(CONTENT_ROOT, brandId);
-    await mkdir(dir, { recursive: true });
-    await writeFile(path.join(dir, 'brand-style.json'), body);
-  }
+  const dir = path.join(CONTENT_ROOT, brandId);
+  await mkdir(dir, { recursive: true });
+  await writeFile(path.join(dir, 'brand-style.json'), body);
   styleCache.set(brandId, { style, at: Date.now() });
   return style;
 }
@@ -144,21 +130,6 @@ export function postDir(brandId, postId) {
   return path.join(CONTENT_ROOT, brandId, postId);
 }
 
-/** Bucket key prefix of a post (Supabase mode). */
-function postKey(brandId, postId) {
-  assertId(brandId);
-  assertId(postId);
-  return `${brandId}/${postId}`;
-}
-
-// Uploaded media live under media/<file>; anything else is rejected before touching the bucket.
-const SAFE_MEDIA = /^media\/[^/\\]+$/;
-
-export function mediaKey(brandId, postId, rel) {
-  if (!SAFE_MEDIA.test(rel)) throw new Error(`invalid media path: ${rel}`);
-  return `${postKey(brandId, postId)}/${rel}`;
-}
-
 const VIDEO_EXT = new Set(['.mp4', '.mov', '.m4v', '.webm']);
 const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 
@@ -183,26 +154,11 @@ export function mediaFile(brand, post, slide) {
   return null;
 }
 
-/**
- * Local file path of a slide's photo/video for rendering. In Supabase mode uploaded
- * media are fetched into `tmpDir` first (ffmpeg and poster frames need real files).
- */
-export async function materializeMedia(brand, post, slide, tmpDir) {
-  if (slide.media && supabaseEnabled) {
-    const data = await blob.getBytes(mediaKey(post.brand, post.id, slide.media));
-    if (!data) return null;
-    const file = path.join(tmpDir, path.basename(slide.media));
-    await writeFile(file, data);
-    return file;
-  }
-  return mediaFile(brand, post, slide);
-}
-
 /** Unique safe object name, media type and MIME for an uploaded original. */
 function uploadTarget(filename) {
   const ext = path.extname(filename).toLowerCase();
   if (!VIDEO_EXT.has(ext) && !IMAGE_EXT.has(ext)) throw new Error(`지원하지 않는 파일 형식이에요: ${ext}`);
-  // ASCII-only: Supabase Storage rejects keys with other characters (400 Invalid key).
+  // ASCII-only names keep URLs and shell tools (ffmpeg) free of escaping surprises.
   const base = path
     .basename(filename, path.extname(filename))
     .replace(/[^A-Za-z0-9_-]+/g, '-')
@@ -220,32 +176,15 @@ function uploadTarget(filename) {
 
 /** Saves an uploaded original into content/<brand>/<post>/media/ and returns its slide fields. */
 export async function saveUpload(brandId, postId, filename, data) {
-  const { name, mediaType, mime } = uploadTarget(filename);
-  if (supabaseEnabled) {
-    await blob.putObject(mediaKey(brandId, postId, `media/${name}`), data, mime);
-  } else {
-    const dir = path.join(postDir(brandId, postId), 'media');
-    await mkdir(dir, { recursive: true });
-    await writeFile(path.join(dir, name), data);
-  }
+  const { name, mediaType } = uploadTarget(filename);
+  const dir = path.join(postDir(brandId, postId), 'media');
+  await mkdir(dir, { recursive: true });
+  await writeFile(path.join(dir, name), data);
   return {
     media: `media/${name}`,
     mediaType,
     imageSha256: createHash('sha256').update(data).digest('hex'),
   };
-}
-
-/**
- * Signed URL for uploading an original straight from the browser to Supabase
- * (big phone videos would blow the 4.5MB request limit of a Vercel function).
- * Returns null in local file mode, where the multipart route handles uploads.
- */
-export async function signMediaUpload(brandId, postId, filename) {
-  if (!supabaseEnabled) return null;
-  const { name, mediaType, mime } = uploadTarget(filename);
-  const rel = `media/${name}`;
-  const url = await blob.signUpload(mediaKey(brandId, postId, rel));
-  return { url, media: rel, mediaType, mime };
 }
 
 export async function listBrands() {
@@ -264,10 +203,7 @@ export async function createPost({ brand: brandId, slug, template, format, ratio
   assertId(brandId);
   const date = new Date().toISOString().slice(0, 7);
   const clean = (slug ?? '').toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '') || 'post';
-  const exists = (pid) =>
-    supabaseEnabled
-      ? blob.objectExists(`${postKey(brandId, pid)}/post.json`)
-      : stat(postDir(brandId, pid)).then(() => true, () => false);
+  const exists = (pid) => stat(postDir(brandId, pid)).then(() => true, () => false);
   let id = `${date}-${clean}`;
   for (let n = 2; await exists(id); n++) id = `${date}-${clean}-${n}`;
   const post = {
@@ -283,7 +219,7 @@ export async function createPost({ brand: brandId, slug, template, format, ratio
     caption: '',
     hashtags: [],
   };
-  if (!supabaseEnabled) await mkdir(postDir(brandId, id), { recursive: true });
+  await mkdir(postDir(brandId, id), { recursive: true });
   return savePost(brandId, id, post);
 }
 
@@ -327,11 +263,6 @@ export async function closingImage(brand) {
 }
 
 export async function readPost(brandId, postId) {
-  if (supabaseEnabled) {
-    const data = await blob.getBytes(`${postKey(brandId, postId)}/post.json`);
-    if (!data) throw new Error(`post not found: ${brandId}/${postId}`);
-    return normalize(JSON.parse(data.toString('utf8')));
-  }
   const file = path.join(postDir(brandId, postId), 'post.json');
   return normalize(JSON.parse(await readFile(file, 'utf8')));
 }
@@ -340,12 +271,6 @@ export async function readPost(brandId, postId) {
 export async function savePost(brandId, postId, post) {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const next = { ...post, updatedAt: new Date().toISOString() };
-  if (supabaseEnabled) {
-    const key = `${postKey(brandId, postId)}/post.json`;
-    await blob.copyObject(key, `${postKey(brandId, postId)}/.history/${stamp}.json`);
-    await blob.putObject(key, `${JSON.stringify(next, null, 2)}\n`, 'application/json');
-    return next;
-  }
   const dir = postDir(brandId, postId);
   const file = path.join(dir, 'post.json');
   const history = path.join(dir, '.history');
@@ -362,10 +287,6 @@ export async function savePost(brandId, postId, post) {
 
 /** Permanently removes a post: post.json, edit history and uploaded media. */
 export async function deletePost(brandId, postId) {
-  if (supabaseEnabled) {
-    await blob.deletePrefix(postKey(brandId, postId));
-    return;
-  }
   await rm(postDir(brandId, postId), { recursive: true, force: true });
 }
 
@@ -390,15 +311,11 @@ export async function purgeMedia(brandId, postId) {
   // Save the stripped post first: if the storage delete fails midway the post never
   // references half-deleted files, and re-running the purge cleans up the rest.
   const saved = await savePost(brandId, postId, post);
-  if (supabaseEnabled) {
-    await blob.deletePrefix(`${postKey(brandId, postId)}/media`, { strict: true });
-  } else {
-    await rm(path.join(postDir(brandId, postId), 'media'), { recursive: true, force: true });
-  }
+  await rm(path.join(postDir(brandId, postId), 'media'), { recursive: true, force: true });
   return saved;
 }
 
-/** Uploaded-media bytes per brand (Supabase list or local stat). */
+/** Uploaded-media bytes per brand. */
 export async function mediaUsage() {
   const out = [];
   for (const brandId of await listDirNames('')) {
@@ -407,21 +324,12 @@ export async function mediaUsage() {
     let files = 0;
     for (const postId of await listDirNames(brandId)) {
       if (!SAFE_ID.test(postId)) continue;
-      if (supabaseEnabled) {
-        for (const e of await blob.listDir(`${brandId}/${postId}/media`)) {
-          if (!e.folder) {
-            bytes += e.size ?? 0;
-            files += 1;
-          }
-        }
-      } else {
-        const dir = path.join(postDir(brandId, postId), 'media');
-        for (const f of await readdir(dir).catch(() => [])) {
-          const st = await stat(path.join(dir, f)).catch(() => null);
-          if (st?.isFile()) {
-            bytes += st.size;
-            files += 1;
-          }
+      const dir = path.join(postDir(brandId, postId), 'media');
+      for (const f of await readdir(dir).catch(() => [])) {
+        const st = await stat(path.join(dir, f)).catch(() => null);
+        if (st?.isFile()) {
+          bytes += st.size;
+          files += 1;
         }
       }
     }
@@ -430,10 +338,8 @@ export async function mediaUsage() {
   return out;
 }
 
-const listDirNames = async (prefix) =>
-  supabaseEnabled
-    ? (await blob.listDir(prefix)).filter((e) => e.folder).map((e) => e.name)
-    : readdir(prefix ? path.join(CONTENT_ROOT, prefix) : CONTENT_ROOT).catch(() => []);
+const listDirNames = (prefix) =>
+  readdir(prefix ? path.join(CONTENT_ROOT, prefix) : CONTENT_ROOT).catch(() => []);
 
 /** Display title: slide 1's headline, else its template's first filled text field. */
 function postTitle(post) {
@@ -490,15 +396,6 @@ export async function imageStatus(brand, post) {
         const t = resolveTemplate(post, slide).meta;
         if (!t.mediaTypes.length || t.usesMedia?.(slide) === false) return { state: 'none' };
         if (post.mediaPurged && !slide.media && !slide.image) return { state: 'none' };
-        if (slide.media && supabaseEnabled) {
-          // Bucket uploads get unique names and are pinned at upload time, so a cheap
-          // existence probe replaces re-hashing (videos would be costly to re-download).
-          const key = mediaKey(post.brand, post.id, slide.media);
-          if (!(await blob.objectExists(key))) return { state: 'missing' };
-          if (slide.imageSha256) return { state: 'ok', sha: slide.imageSha256 };
-          const buf = await blob.getBytes(key);
-          return { state: 'unpinned', sha: createHash('sha256').update(buf).digest('hex') };
-        }
         const file = mediaFile(brand, post, slide);
         if (!file) return { state: 'missing' };
         const buf = await readFile(file);

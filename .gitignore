@@ -7,3 +7,4 @@ node_modules/
 studio/content/
 refrence/
 studio-pre-monorepo.bundle
+!.env.example

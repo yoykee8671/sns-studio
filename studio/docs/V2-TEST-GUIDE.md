@@ -1,11 +1,8 @@
 # v2 로컬 테스트 가이드
 
 v2 브랜치에서 `npm run dev` (http://localhost:3100) 로 확인하는 순서입니다.
-전부 로컬 파일 모드(`content/` 폴더) 기준이고, 운영 Supabase는 건드리지 않습니다.
-
-> ⚠️ `studio/.env.local`에 SUPABASE_URL이 있으면 dev도 운영 버킷을 봅니다.
-> v2 테스트 동안은 `.env.local`에서 `SUPABASE_URL` 줄을 잠시 주석 처리하세요
-> (`# SUPABASE_URL=...`). 테스트 후 되돌리면 됩니다.
+v2는 Supabase를 쓰지 않습니다. 게시물은 항상 `content/` 폴더(맥미니 서버에서는 Docker 볼륨)에
+저장되므로, dev에서 무엇을 해도 운영 데이터에 닿지 않습니다. 서버 운영은 `../DEPLOY.md` 참고.
 
 ```bash
 cd studio && git checkout v2 && npm run dev
@@ -43,5 +40,5 @@ cd studio && git checkout v2 && npm run dev
 - ⚠️ 정리는 되돌릴 수 없으니 테스트는 버려도 되는 게시물로.
 
 ## 배포 전 남은 일 (v2 완료 선언 후)
-1. 별도 테스트 버킷으로 Supabase 경로 종단 테스트 (서명 업로드·정리·용량)
-2. `v2` → `main` PR 머지 → Vercel 자동 배포
+1. 맥미니 테스트 서버(http://localhost:3110)에서 종단 테스트 (`../DEPLOY.md`)
+2. 문제 없으면 sns.gnuol.com 전환 (`../DEPLOY.md`의 "운영 전환")

@@ -1,10 +1,11 @@
 import { savePost, loadBrand } from '@/lib/store.mjs';
 import { renderPost, captionText, permissionError, ImageChangedError } from '@/lib/render-server.mjs';
-import { publishConfig, uploadMedia, publish } from '@/lib/instagram.mjs';
+import { publishConfig, publish } from '@/lib/instagram.mjs';
+import { stagePublic, removeStaged, sweepStaged } from '@/lib/public-media.mjs';
 
 export const maxDuration = 300;
 
-// Saves the post, renders JPEGs/MP4s, uploads them to public URLs and publishes to Instagram.
+// Saves the post, renders JPEGs/MP4s, stages them at public URLs and publishes to Instagram.
 export async function POST(req, { params }) {
   const { brand: brandId, id } = await params;
   const brand = await loadBrand(brandId);
@@ -21,10 +22,14 @@ export async function POST(req, { params }) {
     return Response.json({ error: '이미 발행된 게시물이에요.' }, { status: 409 });
   }
 
+  let token = null;
   try {
+    await sweepStaged();
     let saved = await savePost(brandId, id, post);
     const { files } = await renderPost(saved, { format: 'jpg', quality: 95 });
-    const items = await uploadMedia(`${brandId}/${id}`, files);
+    const staged = await stagePublic(files);
+    token = staged.token;
+    const items = staged.items;
     const result = await publish({ brand, items, caption: captionText(saved).trim() });
     saved = await savePost(brandId, id, {
       ...saved,
@@ -36,5 +41,8 @@ export async function POST(req, { params }) {
   } catch (err) {
     const status = err instanceof ImageChangedError ? 409 : 502;
     return Response.json({ error: err.message }, { status });
+  } finally {
+    // publish() returns after media_publish, so Instagram is done fetching by now.
+    if (token) await removeStaged(token).catch(() => {});
   }
 }

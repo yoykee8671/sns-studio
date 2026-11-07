@@ -398,41 +398,12 @@ export default function Editor({ brandId, postId }) {
     if (!file) return;
     setBusy('upload');
     try {
-      let fields;
-      // Signed direct upload straight to Supabase (big videos exceed the 4.5MB
-      // request cap of Vercel functions); local file mode answers url: null.
-      const signRes = await fetch(`${apiBase}/media/sign`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename: file.name }),
-      });
-      if (!signRes.ok) throw new Error(await errorOf(signRes));
-      const sign = await signRes.json();
-      if (sign.url) {
-        const put = await fetch(sign.url, {
-          method: 'PUT',
-          headers: { 'Content-Type': sign.mime },
-          body: file,
-        });
-        if (!put.ok) {
-          const text = await put.text().catch(() => '');
-          if (/payload too large|exceeded the maximum allowed size/i.test(text)) {
-            throw new Error('파일이 스토리지 용량 제한을 넘어요 (Supabase 무료 플랜 50MB). 영상을 압축해서 다시 올려주세요.');
-          }
-          let detail = '';
-          try { detail = JSON.parse(text).message ?? JSON.parse(text).error ?? ''; } catch { detail = text.slice(0, 120); }
-          throw new Error(`스토리지 업로드 실패 (${put.status})${detail ? `: ${detail}` : ''}`);
-        }
-        const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
-        const sha = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
-        fields = { media: sign.media, mediaType: sign.mediaType, imageSha256: sha };
-      } else {
-        const body = new FormData();
-        body.append('file', file);
-        const res = await fetch(`${apiBase}/media`, { method: 'POST', body });
-        if (!res.ok) throw new Error(await errorOf(res));
-        fields = await res.json();
-      }
+      const body = new FormData();
+      body.append('file', file);
+      const res = await fetch(`${apiBase}/media`, { method: 'POST', body });
+      if (res.status === 413) throw new Error('파일이 너무 커요 (최대 100MB). 영상을 압축해서 다시 올려주세요.');
+      if (!res.ok) throw new Error(await errorOf(res));
+      const fields = await res.json();
       updateSlide(sel, { ...fields, image: undefined });
       setImages((im) => im.map((s, i) => (i === sel ? { state: 'ok', sha: fields.imageSha256 } : s)));
       notify(`${fields.mediaType === 'video' ? '영상' : '사진'}을 올렸어요. 저장을 눌러야 게시물에 남아요.`);
@@ -957,8 +928,8 @@ export default function Editor({ brandId, postId }) {
                       체크하고 토큰 발급 → 액세스 토큰 디버거에서 <b>장기 토큰(60일)</b>으로 연장해요.</li>
                     <li><b>계정 ID(IG_USER_ID)</b>: 탐색기에서 <code>me/accounts</code> 호출 → 페이지 ID 확인 →
                       <code>{'{페이지ID}?fields=instagram_business_account'}</code> 호출하면 나오는 숫자 ID예요.</li>
-                    <li><b>BLOB_READ_WRITE_TOKEN</b>: <a href="https://vercel.com" target="_blank" rel="noreferrer">Vercel</a> 대시보드 → Storage → Blob 생성 →
-                      <code>.env.local</code>용 토큰 복사. (Instagram이 이미지를 공개 URL에서 가져가기 때문에 필요해요.)</li>
+                    <li><b>PUBLIC_BASE_URL</b>: 이 서버의 공개 주소(예: <code>https://sns.gnuol.com</code>)를
+                      서버 <code>.env</code>에 넣어요. (Instagram이 발행할 이미지를 이 주소에서 가져가요.)</li>
                   </ol>
                 </details>
                 <p className="note">설정 전까지는 &lsquo;내려받기&rsquo;로 받아서 Meta Business Suite에 올려주세요.</p>

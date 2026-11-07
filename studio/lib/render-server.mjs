@@ -2,13 +2,13 @@
 // Image slides → PNG/JPG/SVG screenshots. Video slides → MP4: the template is rendered as a
 // transparent overlay and composited over the original video with ffmpeg.
 import { execFile } from 'node:child_process';
-import { readFile, mkdtemp, rm, cp } from 'node:fs/promises';
+import { readFile, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import ffmpegPath from 'ffmpeg-static';
 import { chromium } from 'playwright-core';
-import { ROOT, loadBrand, loadLogoSvg, imageStatus, materializeMedia, mediaTypeOf, closingImage, resolveAsset } from './store.mjs';
+import { ROOT, loadBrand, loadLogoSvg, imageStatus, mediaFile, mediaTypeOf, closingImage, resolveAsset } from './store.mjs';
 import { exportSlideSvg } from './svg-export.mjs';
 import { getTemplate, resolveTemplate } from './templates/index.mjs';
 import { WEB_FONTS } from './templates/fonts.mjs';
@@ -77,24 +77,12 @@ const closingHtml = (src, { width, height }) => `<!doctype html>
   img { width: 100%; height: 100%; object-fit: cover; display: block; }
 </style></head><body><img src="${src}"></body></html>`;
 
-// Three environments:
-// - Vercel: @sparticuz/chromium serverless build; brand fonts are copied into
-//   FONTCONFIG_PATH (/tmp/fonts) because that is the only folder fontconfig scans there.
-// - Docker/Render: CHROME_PATH points at system chromium. Low-memory flags keep it inside
-//   a small container's budget (one process, no GPU, capped JS heap); CHROME_LOW_MEM=0
-//   turns them off without a rebuild in case a chromium build misbehaves.
+// Two environments:
+// - Docker (Mac mini server): CHROME_PATH points at system chromium. Low-memory flags keep
+//   it inside a small container's budget (one process, no GPU, capped JS heap);
+//   CHROME_LOW_MEM=0 turns them off without a rebuild in case a chromium build misbehaves.
 // - Local dev: the installed Chrome.
 async function launchBrowser() {
-  if (process.env.VERCEL) {
-    const { default: serverless } = await import('@sparticuz/chromium');
-    const executablePath = await serverless.executablePath();
-    const fontDir = process.env.FONTCONFIG_PATH ?? path.join(tmpdir(), 'fonts');
-    await cp(path.resolve(ROOT, '../deploy/fonts'), fontDir, {
-      recursive: true,
-      force: false,
-    }).catch(() => {});
-    return chromium.launch({ executablePath, args: serverless.args });
-  }
   const lowMem =
     process.env.CHROME_LOW_MEM !== '0'
       ? [
@@ -148,7 +136,7 @@ export async function renderPost(post, { format, quality = 92, allowChanged = fa
       // stale media fields left over from a template switch must not drive the
       // video-composite path (templates without [data-media-box] would crash it).
       const usesMedia = tMeta.mediaTypes.length > 0 && tMeta.usesMedia?.(slide) !== false;
-      const file = usesMedia ? await materializeMedia(brand, post, slide, tmp) : null;
+      const file = usesMedia ? mediaFile(brand, post, slide) : null;
       const isVideoFile = Boolean(file) && mediaTypeOf(slide) === 'video';
       const isVideo = isVideoFile && tMeta.mediaTypes.includes('video');
       const base = { brand, post, slide, index: i, logoSvg };

@@ -1,8 +1,8 @@
 // Instagram API publishing: single image, carousel (images/videos mixed) or reel.
-// The API pulls media from public URLs, so slides are uploaded to Vercel Blob first.
+// The API pulls media from public URLs, so slides are staged on this server first
+// (see public-media.mjs; PUBLIC_BASE_URL must be reachable from the internet).
 // Default host is the "Instagram API with Instagram Login" flavor (no Facebook Page
 // needed); set IG_GRAPH_HOST=graph.facebook.com for the Facebook-Login flavor.
-import { put } from '@vercel/blob';
 
 const GRAPH = `https://${process.env.IG_GRAPH_HOST ?? 'graph.instagram.com'}/${
   process.env.META_GRAPH_VERSION ?? 'v26.0'
@@ -22,7 +22,7 @@ export function publishConfig(brand) {
   const required = {
     [ig.userIdEnv]: `${brand.handle} Instagram 비즈니스 계정 ID`,
     [ig.tokenEnv]: `${brand.handle} Meta 액세스 토큰`,
-    BLOB_READ_WRITE_TOKEN: '이미지 공개 URL용 Vercel Blob 토큰',
+    PUBLIC_BASE_URL: '이 서버의 공개 주소 (예: https://sns.gnuol.com) — Instagram이 사진을 가져가는 곳',
   };
   const missing = Object.entries(required)
     .filter(([key]) => !process.env[key])
@@ -51,20 +51,6 @@ async function waitUntilReady(containerId, token) {
     await new Promise((r) => setTimeout(r, 3000));
   }
   throw new Error('Instagram 처리 대기 시간 초과');
-}
-
-/** @param {{name: string, data: Buffer, type: string}[]} files */
-export async function uploadMedia(prefix, files) {
-  return Promise.all(
-    files.map(async (f) => {
-      const blob = await put(`${prefix}/${f.name}`, f.data, {
-        access: 'public',
-        contentType: f.type,
-        addRandomSuffix: true,
-      });
-      return { url: blob.url, kind: f.type.startsWith('video/') ? 'video' : 'image' };
-    }),
-  );
 }
 
 const itemParams = (item) =>

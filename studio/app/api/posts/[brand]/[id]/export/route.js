@@ -1,7 +1,7 @@
 import { writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import JSZip from 'jszip';
-import { postDir, supabaseEnabled } from '@/lib/store.mjs';
+import { postDir } from '@/lib/store.mjs';
 import { renderPost, captionText, permissionError, ImageChangedError } from '@/lib/render-server.mjs';
 
 export const maxDuration = 300;
@@ -35,9 +35,9 @@ export async function POST(req, { params }) {
     }
 
     const { files } = await renderPost(post, { format });
-    // Local convenience copy under content/<brand>/<post>/out/; skipped in bucket mode.
-    const out = supabaseEnabled ? null : path.join(postDir(brandId, id), 'out');
-    if (out) await mkdir(out, { recursive: true });
+    // Convenience copy under content/<brand>/<post>/out/ (latest export only).
+    const out = path.join(postDir(brandId, id), 'out');
+    await mkdir(out, { recursive: true });
 
     const zip = new JSZip();
     for (const f of files) {

@@ -1,0 +1,47 @@
+# SNS Studio v2 on the Mac mini (Colima) — no Vercel, no Supabase.
+# Posts/media are stored in the Docker volume `sns-v2-content` (survives rebuilds).
+#
+#   cd ~/project/sns && docker compose up -d --build     # build + (re)start
+#   docker compose logs -f                               # logs
+#
+# Secrets go in ./.env (git-ignored); see .env.example for the keys.
+name: sns-v2
+
+services:
+  app:
+    container_name: sns-v2-app
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_OPTIONS: --max-old-space-size=768
+    # Chromium needs a larger shared-memory area than the 64MB default to render slides.
+    shm_size: 512m
+    volumes:
+      - content:/data/content
+    # Test access on this Mac mini only: http://localhost:3110
+    ports:
+      - "127.0.0.1:3110:3100"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3100/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    networks:
+      default: {}
+      # cloudflared (wooofpay stack) lives on this network. The alias stays `sns-v2`
+      # while testing; at cutover it becomes `sns` so sns.gnuol.com points here.
+      tunnel:
+        aliases: [sns-v2]
+
+volumes:
+  content:
+    name: sns-v2-content
+
+networks:
+  tunnel:
+    external: true
+    name: wooofpay_default

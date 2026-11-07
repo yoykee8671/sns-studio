@@ -16,6 +16,8 @@ export async function proxy(req) {
 
   const { pathname } = req.nextUrl;
   if (pathname === '/login' || pathname === '/api/login') return NextResponse.next();
+  // Staged publish files must be fetchable by Instagram's servers (random, short-lived URLs).
+  if (pathname.startsWith('/p/')) return NextResponse.next();
 
   if (req.cookies.get(COOKIE)?.value === (await tokenOf(password))) return NextResponse.next();
 

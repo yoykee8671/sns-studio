@@ -1,16 +1,12 @@
 // 연재 (series) management: issues are numbered automatically and "다음 호" starts a
 // new post from the latest issue's template composition (layout kept, content blank).
-// Stored per brand at content/<brand>/series.json (same key in Supabase mode).
+// Stored per brand at content/<brand>/series.json.
 // Issue numbers are bookkeeping only — they never appear on the cards (user decision).
 import { readFile, writeFile, mkdir, copyFile } from 'node:fs/promises';
 import path from 'node:path';
-import {
-  supabaseEnabled, readPost, createPost, postDir,
-} from './store.mjs';
-import * as blob from './blob-store.mjs';
+import { readPost, createPost, postDir } from './store.mjs';
 
 const SAFE_ID = /^[a-z0-9][a-z0-9_-]*$/i;
-const seriesKey = (brandId) => `${brandId}/series.json`;
 const seriesFile = (brandId) => path.join(path.dirname(postDir(brandId, 'x')), 'series.json');
 
 export async function loadSeries(brandId) {
@@ -18,15 +14,11 @@ export async function loadSeries(brandId) {
   // Only a genuinely absent file means "no series yet". A read error or corrupted
   // JSON must throw — returning [] here would let the next save wipe every series.
   let raw;
-  if (supabaseEnabled) {
-    raw = (await blob.getBytes(seriesKey(brandId)))?.toString('utf8') ?? null;
-  } else {
-    try {
-      raw = await readFile(seriesFile(brandId), 'utf8');
-    } catch (e) {
-      if (e.code !== 'ENOENT') throw e;
-      raw = null;
-    }
+  try {
+    raw = await readFile(seriesFile(brandId), 'utf8');
+  } catch (e) {
+    if (e.code !== 'ENOENT') throw e;
+    raw = null;
   }
   if (!raw) return { series: [] };
   const parsed = JSON.parse(raw);
@@ -36,12 +28,6 @@ export async function loadSeries(brandId) {
 async function saveSeries(brandId, data) {
   const body = `${JSON.stringify(data, null, 2)}\n`;
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  if (supabaseEnabled) {
-    await blob.copyObject(seriesKey(brandId), `${brandId}/.series-history/${stamp}.json`)
-      .catch(() => {}); // first save has nothing to back up
-    await blob.putObject(seriesKey(brandId), body, 'application/json');
-    return;
-  }
   const dir = path.dirname(seriesFile(brandId));
   await mkdir(path.join(dir, '.series-history'), { recursive: true });
   await copyFile(seriesFile(brandId), path.join(dir, '.series-history', `${stamp}.json`))

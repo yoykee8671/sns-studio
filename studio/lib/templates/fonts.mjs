@@ -1,7 +1,7 @@
 // Bundled web fonts beyond the system/brand fonts. Served from /fonts (studio/public)
 // for the srcDoc previews; render-server inlines them as data URLs for export because
 // page.setContent() has no base URL to resolve /fonts against. The same TTFs also sit
-// in deploy/fonts so Vercel's fontconfig path keeps working as a second net.
+// in deploy/fonts, which the Docker image installs system-wide as a second net.
 export const WEB_FONTS = [
   { family: 'NanumMyeongjo', weight: 400, file: 'NanumMyeongjo-Regular.ttf' },
   { family: 'NanumMyeongjo', weight: 700, file: 'NanumMyeongjo-Bold.ttf' },
