@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 /**
- * 연재 관리 — per-brand series with auto issue numbers. "다음 호 만들기" clones the
+ * 시리즈 발행관리 — per-brand series with auto issue numbers. "다음 호 만들기" clones the
  * latest issue's slide composition into a fresh post and opens the editor.
  * @param {{ data: { brand: string, handle: string, series: object[] }[],
  *           posts: { brand: string, id: string, title: string, series?: object }[] }} props
@@ -17,6 +17,7 @@ export default function SeriesSection({ data, posts, embedded = false }) {
   const [error, setError] = useState(null);
   const [titles, setTitles] = useState({}); // per-brand new series title
   const [picks, setPicks] = useState({}); // per-series selected post to attach
+  const [newBrand, setNewBrand] = useState(data[0]?.brand ?? '');
 
   const call = async (brand, body) => {
     setError(null);
@@ -75,13 +76,35 @@ export default function SeriesSection({ data, posts, embedded = false }) {
     <section className="series">
       {!embedded && (
       <button className="series-toggle" onClick={() => setOpen(!open)}>
-          즐겨찾기 {total > 0 && `(${total})`} {open ? '▴' : '▾'}
+          시리즈 발행관리 {total > 0 && `(${total})`} {open ? '▴' : '▾'}
         </button>
       )}
       {open && (
         <div className="series-body">
           {error && <p className="form-error">{error}</p>}
-          {data.map(({ brand, handle, series }) => (
+          <div className="series-create">
+            <h3>새 시리즈 만들기</h3>
+            <div className="series-create-row">
+              <select value={newBrand} onChange={(e) => setNewBrand(e.target.value)} aria-label="계정">
+                {data.map(({ brand, handle }) => <option key={brand} value={brand}>{handle}</option>)}
+              </select>
+              <input
+                className="text-input"
+                placeholder="새 시리즈 이름 (예: 주간 꿀팁)"
+                value={titles[newBrand] ?? ''}
+                onChange={(e) => setTitles((t) => ({ ...t, [newBrand]: e.target.value }))}
+                onKeyDown={(e) => e.key === 'Enter' && (titles[newBrand] ?? '').trim() && !busy && create(newBrand)}
+              />
+              <button
+                className="primary"
+                disabled={!(titles[newBrand] ?? '').trim() || !!busy}
+                onClick={() => create(newBrand)}
+              >
+                {busy === `create-${newBrand}` ? '만드는 중…' : '시리즈 생성'}
+              </button>
+            </div>
+          </div>
+          {data.filter(({ series }) => series.length).map(({ brand, handle, series }) => (
             <div className="series-brand" key={brand}>
               <h3>{handle}</h3>
               {series.map((s) => {
@@ -110,14 +133,14 @@ export default function SeriesSection({ data, posts, embedded = false }) {
                             disabled={!picks[s.id] || !!busy}
                             onClick={() => attach(brand, s.id)}
                           >
-                            {busy === `attach-${s.id}` ? '넣는 중…' : '연재에 넣기'}
+                            {busy === `attach-${s.id}` ? '넣는 중…' : '시리즈에 넣기'}
                           </button>
                         </>
                       )}
                       <button
                         className="primary"
                         disabled={!!busy || !s.posts.length}
-                        title={s.posts.length ? '' : '먼저 게시물을 연재에 넣어주세요'}
+                        title={s.posts.length ? '' : '먼저 게시물을 시리즈에 넣어주세요'}
                         onClick={() => next(brand, s.id)}
                       >
                         {busy === `next-${s.id}` ? '만드는 중…' : `${String(s.nextNo).padStart(3, '0')}호 만들기`}
@@ -126,20 +149,6 @@ export default function SeriesSection({ data, posts, embedded = false }) {
                   </div>
                 );
               })}
-              <div className="series-new">
-                <input
-                  className="text-input"
-                  placeholder="새 연재 이름 (예: 주간 꿀팁)"
-                  value={titles[brand] ?? ''}
-                  onChange={(e) => setTitles((t) => ({ ...t, [brand]: e.target.value }))}
-                />
-                <button
-                  disabled={!(titles[brand] ?? '').trim() || !!busy}
-                  onClick={() => create(brand)}
-                >
-                  {busy === `create-${brand}` ? '만드는 중…' : '새 연재'}
-                </button>
-              </div>
             </div>
           ))}
         </div>

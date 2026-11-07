@@ -1,10 +1,9 @@
 import Link from 'next/link';
 import {
-  listPosts, listBrands, mediaUsage, loadBrand, expirePublishedMedia, MEDIA_RETENTION_DAYS, clientBrand,
+  listPosts, listBrands, mediaUsage, loadBrand, loadLogoSvg, expirePublishedMedia, MEDIA_RETENTION_DAYS, clientBrand,
 } from '@/lib/store.mjs';
 import { hasInstagram } from '@/lib/instagram.mjs';
-import { listLayouts, readHidden } from '@/lib/layouts.mjs';
-import { TEMPLATES, ROLE_ORDER } from '@/lib/templates/index.mjs';
+import { listLayouts } from '@/lib/layouts.mjs';
 import { loadSeries } from '@/lib/series.mjs';
 import { suggestReady } from '@/lib/suggest.mjs';
 import DeletePostButton from './delete-post-button';
@@ -33,17 +32,17 @@ export default async function Home({ searchParams }) {
   const { account: accountParam } = await searchParams;
   // The server also runs this hourly; doing it here keeps the list honest right away.
   await expirePublishedMedia().catch(() => {});
-  const [posts, brands, usage, layouts, hidden] = await Promise.all([
-    listPosts(), listBrands(), mediaUsage(), listLayouts(), readHidden(),
+  const [posts, brands, usage, layouts] = await Promise.all([
+    listPosts(), listBrands(), mediaUsage(), listLayouts(),
   ]);
   // Posts are listed per account (tabs); the choice lives in the URL so the editor's back
   // link returns to the same account.
   const account = brands.some((b) => b.id === accountParam) ? accountParam : brands[0]?.id;
   const counts = Object.fromEntries(brands.map((b) => [b.id, posts.filter((p) => p.brand === b.id).length]));
   const shown = posts.filter((p) => p.brand === account);
-  const builtins = Object.entries(TEMPLATES)
-    .map(([key, t]) => ({ key, label: t.meta.label, role: t.meta.role }))
-    .sort((a, b) => ROLE_ORDER.indexOf(a.role) - ROLE_ORDER.indexOf(b.role));
+  // 공통 템플릿 관리 previews render with the selected account's look.
+  const previewBrand = await loadBrand(account);
+  const previewLogo = await loadLogoSvg(previewBrand);
   const usedTotal = usage.reduce((n, u) => n + u.bytes, 0);
   const seriesData = await Promise.all(
     brands.map(async (b) => ({
@@ -73,8 +72,7 @@ export default async function Home({ searchParams }) {
   return (
     <main className="home">
       <header className="home-head">
-        <h1>SNS Studio</h1>
-        <p>계정별 피드를 미리보고 마지막 QA를 한 뒤 내려받거나 발행해요.</p>
+        <h1 className="brand-title"><Link href="/">SNS Studio</Link></h1>
         {usedTotal > 0 && (
           <p className="usage">
             서버 미디어 {fmtMB(usedTotal)}
@@ -87,9 +85,9 @@ export default async function Home({ searchParams }) {
       <HomeTools
         newPost={{ brands, aiReady: suggestReady(), layouts, defaultBrand: account }}
         series={{ data: seriesData, posts }}
-        templates={{ layouts, hidden, builtins, previewBrand: account }}
+        templates={{ brand: clientBrand(previewBrand), logoSvg: previewLogo }}
         styles={{ data: styleData }}
-      />
+      >
       <nav className="account-tabs" aria-label="계정">
         {brands.map((b) => (
           <Link
@@ -125,6 +123,7 @@ export default async function Home({ searchParams }) {
         ))}
         {shown.length === 0 && <li className="empty">이 계정에는 아직 게시물이 없어요.</li>}
       </ul>
+      </HomeTools>
     </main>
   );
 }

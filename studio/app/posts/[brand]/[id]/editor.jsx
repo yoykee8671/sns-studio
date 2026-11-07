@@ -135,6 +135,8 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
   const [sel, setSel] = useState(0);
   const [reports, setReports] = useState({});
   const [dirty, setDirty] = useState(false);
+  const dirtyRef = useRef(false);
+  dirtyRef.current = dirty;
   const [busy, setBusy] = useState(null);
   const [toast, setToast] = useState(null);
   const [modal, setModal] = useState(null);
@@ -147,7 +149,7 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
   const [capDraft, setCapDraft] = useState(null); // { detailed, short, hashtags, view }
   const [gallery, setGallery] = useState(null); // null | 'switch' (현재 장) | 'add' (새 장)
   const [loadError, setLoadError] = useState(null);
-  const [library, setLibrary] = useState({ layouts: [], hidden: [] }); // 내 템플릿 + hidden built-ins
+  const [library, setLibrary] = useState({ layouts: [], hidden: [], favorites: [] }); // 내 템플릿, hidden built-ins, ☆
   // Thumbnail being dragged: { from, to, dx, dy, overTrash, settling } (Instagram-style).
   const [drag, setDrag] = useState(null);
   const [uploadNote, setUploadNote] = useState(null); // "2/5" while a batch uploads
@@ -206,10 +208,17 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
 
   const apiBase = isLayout ? `/api/layouts/${postId}` : `/api/posts/${brandId}/${postId}`;
 
+  // Leaving with unsaved edits asks first (in-app links; closing the tab gets the
+  // browser's own prompt via beforeunload).
+  const leaveTo = (url) => {
+    if (dirtyRef.current) setModal({ kind: 'leave', url });
+    else router.push(url);
+  };
+
   const loadLibrary = useCallback(() => {
     fetch('/api/layouts')
       .then((r) => r.json())
-      .then((d) => setLibrary({ layouts: d.layouts ?? [], hidden: d.hidden ?? [] }))
+      .then((d) => setLibrary({ layouts: d.layouts ?? [], hidden: d.hidden ?? [], favorites: d.favorites ?? [] }))
       .catch(() => {});
   }, []);
   useEffect(loadLibrary, [loadLibrary]);
@@ -233,8 +242,8 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
     toastTimer.current = setTimeout(() => setToast(null), 3500);
   }, []);
 
-  // 실행 취소/다시 실행: every edit pushes the previous post onto `past`. Edits of the
-  // same kind in quick succession (typing in one field, dragging one slider) share a step.
+  // 실행 취소/다시 실행 (no limit): every edit pushes the previous post onto `past`. Edits
+  // of the same kind in quick succession (typing in one field, dragging a slider) share a step.
   const postRef = useRef(null);
   postRef.current = post;
   const past = useRef([]);
@@ -248,7 +257,6 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
     const same = group && lastStep.current.group === group && now - lastStep.current.at < 1000;
     if (!same && postRef.current) {
       past.current.push(postRef.current);
-      if (past.current.length > 100) past.current.shift();
     }
     lastStep.current = { group, at: now };
     future.current = [];
@@ -415,9 +423,12 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
       setPost(d.post);
       setImages(d.images);
       setDirty(false);
+      dirtyRef.current = false;
       notify(isLayout ? '템플릿을 저장했어요.' : '임시 저장했어요.');
+      return true;
     } catch (e) {
       notify(`저장 실패: ${e.message}`, 'error');
+      return false;
     } finally {
       setBusy(null);
     }
@@ -980,7 +991,18 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
     <div className={`editor ${typing ? 'typing' : ''}`}>
       <header className="topbar">
         <div className="topbar-left">
-          <Link href={isLayout ? '/#my-templates' : `/?account=${brandId}`} className="back" aria-label="목록으로"><Icon d={CHEVRON_LEFT} size={22} /></Link>
+          <Link
+            href={isLayout ? '/#my-templates' : `/?account=${brandId}`}
+            className="back"
+            aria-label="목록으로"
+            onClick={(e) => {
+              if (!dirty) return;
+              e.preventDefault();
+              leaveTo(isLayout ? '/#my-templates' : `/?account=${brandId}`);
+            }}
+          >
+            <Icon d={CHEVRON_LEFT} size={22} />
+          </Link>
           <div className="topbar-title">
             <div className="crumb">
               {isLayout ? '내 템플릿 편집 · 미리보기 계정 ' : ''}@{brandId} · {meta.label} · {FORMAT_LABEL[post.format] ?? post.format}
@@ -1557,12 +1579,17 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
           brand={ctx.brand}
           logoSvg={ctx.logoSvg}
           current={gallery === 'switch' ? (slide?.template ?? post.template) : undefined}
-          title={gallery === 'switch' ? `${sel + 1}장의 템플릿 고르기` : '새 장의 템플릿 고르기'}
+          subtitle={gallery === 'switch' ? `${sel + 1}장` : '새 장'}
           quickLabel={gallery === 'add' ? '현재 템플릿 복제' : undefined}
           hidden={library.hidden}
+          favorites={library.favorites}
           mine={library.layouts}
           onLibraryChange={loadLibrary}
           notify={notify}
+          onNavigate={(url) => {
+            setGallery(null);
+            leaveTo(url);
+          }}
           onQuick={() => {
             duplicateSlide(Math.min(sel, post.slides.length - 1));
             setGallery(null);
@@ -1655,6 +1682,35 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
                 <div className="modal-actions">
                   <button onClick={() => setModal(null)}>취소</button>
                   <button className="primary" onClick={doPublish}>발행하기</button>
+                </div>
+              </>
+            )}
+            {modal.kind === 'leave' && (
+              <>
+                <h2>저장하지 않은 변경이 있어요</h2>
+                <p>지금 나가면 {isLayout ? '템플릿' : '게시물'}에 저장되지 않아요. {isLayout ? '저장' : '임시 저장'}하고 나갈까요?</p>
+                <div className="modal-actions">
+                  <button onClick={() => setModal(null)}>취소</button>
+                  <button
+                    className="topbar-danger"
+                    onClick={() => {
+                      setDirty(false);
+                      dirtyRef.current = false;
+                      router.push(modal.url);
+                    }}
+                  >
+                    저장 안 하고 나가기
+                  </button>
+                  <button
+                    className="primary"
+                    disabled={busy === 'save'}
+                    onClick={async () => {
+                      const ok = await save();
+                      if (ok) router.push(modal.url);
+                    }}
+                  >
+                    {busy === 'save' ? '저장 중…' : isLayout ? '저장하고 나가기' : '임시 저장하고 나가기'}
+                  </button>
                 </div>
               </>
             )}

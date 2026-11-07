@@ -99,6 +99,8 @@ export async function listLayouts() {
         slides: l.slides.length, templates: l.slides.map((s) => s.template ?? l.template),
         // One-slide templates can be applied to a single slide from the editor's picker.
         slide: l.slides.length === 1 ? { ...l.slides[0], template: l.slides[0].template ?? l.template } : undefined,
+        // First slide, for the preview card of any template (one slide or many).
+        first: { ...l.slides[0], template: l.slides[0].template ?? l.template },
         updatedAt: l.updatedAt,
       });
     } catch (e) {
@@ -158,6 +160,27 @@ export function layoutAsPost(layout) {
     layoutName: layout.name,
     layoutDesc: layout.desc,
   };
+}
+
+// ---- 즐겨찾는 템플릿: 'builtin:<key>' or 'mine:<id>' ----
+
+const FAV_FILE = path.join(DIR, '_favorites.json');
+const FAV_RE = /^(builtin:[a-z0-9-]+|mine:l-[a-z0-9]{6,20})$/;
+
+export async function readFavorites() {
+  try {
+    const { favorites } = JSON.parse(await readFile(FAV_FILE, 'utf8'));
+    return (favorites ?? []).filter((f) => FAV_RE.test(f) && (!f.startsWith('builtin:') || TEMPLATES[f.slice(8)]));
+  } catch {
+    return [];
+  }
+}
+
+export async function saveFavorites(list) {
+  const favorites = [...new Set(list)].filter((f) => FAV_RE.test(f));
+  await mkdir(DIR, { recursive: true });
+  await writeFile(FAV_FILE, `${JSON.stringify({ favorites }, null, 2)}\n`);
+  return favorites;
 }
 
 // ---- hidden built-in templates ----

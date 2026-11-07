@@ -5,6 +5,7 @@ import { TEMPLATES, ROLE_ORDER } from '@/lib/templates/index.mjs';
 
 const ROLE_LABEL = { cover: '표지', any: '어디든', inner: '속지', last: '마지막 장' };
 const CARD_W = 150;
+const ROW_MAX = 25; // a row holds at most 25 templates, then a new row starts
 
 // Neutral sample photo so photo templates preview as a design, not a warning box.
 const SAMPLE_MEDIA =
@@ -26,7 +27,7 @@ function renderPreview(t, post, brand, logoSvg, design = {}) {
     post,
     slide,
     index: t.meta.role === 'inner' ? 1 : 0,
-    mediaSrc: t.meta.mediaTypes.length ? SAMPLE_MEDIA : null,
+    mediaSrc: t.meta.bgPhoto ? null : SAMPLE_MEDIA,
     mediaType: 'image',
     logoSvg,
     mode: 'export',
@@ -34,51 +35,68 @@ function renderPreview(t, post, brand, logoSvg, design = {}) {
   return { html, size };
 }
 
+const chunk = (arr, n) => Array.from({ length: Math.ceil(arr.length / n) }, (_, i) => arr.slice(i * n, i * n + n));
+
 /**
- * 템플릿 갤러리 — rendered previews (meta.sample) grouped by role; click to pick.
- * Built-in templates the user hid are left out (except the current one); one-slide
- * 내 템플릿 come first and are picked with onPickMine.
- * @param {{ post: object, brand: object, logoSvg: string, current?: string,
- *           title: string, quickLabel?: string, onQuick?: () => void,
- *           hidden?: string[], mine?: object[], onPickMine?: (layout: object) => void,
- *           onLibraryChange?: () => void, notify?: (text: string, kind?: string) => void,
- *           onPick: (key: string) => void, onClose: () => void }} props
+ * 템플릿 창 — rows per category: 즐겨찾는 템플릿, 내 템플릿, then the built-ins by role.
+ * Card: thumbnail (tap = pick, or open the editor in manage mode) and a footer strip with
+ * 수정 · 복제 · ☆ (favourite) · ✕ (hide a built-in / delete one of mine).
+ *
+ * mode 'pick' (editor): onPick(key) / onPickMine(layout); hidden built-ins are left out.
+ * mode 'manage' (home 공통 템플릿 관리): every template, hidden ones dimmed with 보이기.
+ * onNavigate(url) leaves the page (the editor guards unsaved work first).
  */
 export default function TemplateGallery({
-  post, brand, logoSvg, current, title, quickLabel, onQuick, onPick, onClose,
-  hidden = [], mine = [], onPickMine, onLibraryChange, notify,
+  post, brand, logoSvg, current, subtitle, quickLabel, onQuick, onPick, onClose,
+  hidden = [], favorites = [], mine = [], onPickMine, onLibraryChange, notify, onNavigate,
+  mode = 'pick', onCreate,
 }) {
-  const groups = useMemo(() => {
-    const entries = Object.entries(TEMPLATES).filter(
-      ([key, t]) => t.meta.formats.includes(post.format) && (!hidden.includes(key) || key === current),
-    );
-    return ROLE_ORDER.map((role) => ({
-      role,
-      items: entries.filter(([, t]) => t.meta.role === role),
-    })).filter((g) => g.items.length);
-  }, [post.format, hidden, current]);
+  const manage = mode === 'manage';
+  const fits = (key) => TEMPLATES[key]?.meta.formats.includes(post.format);
 
-  const myItems = useMemo(
-    () =>
-      mine
-        .filter((l) => l.slide && TEMPLATES[l.slide.template]?.meta.formats.includes(post.format))
-        .map((l) => ({ layout: l, ...renderPreview(TEMPLATES[l.slide.template], post, brand, logoSvg, l.slide) })),
-    [mine, post, brand, logoSvg],
-  );
+  const builtinCard = (key, extra = {}) => {
+    const t = TEMPLATES[key];
+    return {
+      id: `builtin:${key}`, item: { kind: 'builtin', key }, label: t.meta.label,
+      ...renderPreview(t, post, brand, logoSvg), on: key === current, hidden: hidden.includes(key),
+      pick: manage ? null : () => onPick(key), ...extra,
+    };
+  };
+  const mineCard = (l) => {
+    const slide = l.slide ?? l.first;
+    return {
+      id: `mine:${l.id}`, item: { kind: 'mine', layout: l },
+      label: l.slides > 1 ? `${l.name} · ${l.slides}장` : l.name,
+      ...renderPreview(TEMPLATES[slide.template], post, brand, logoSvg, slide),
+      on: false,
+      // Only one-slide templates apply to a single slide; bigger ones start new posts.
+      pick: manage || !l.slide ? null : () => onPickMine(l),
+    };
+  };
 
-  const previews = useMemo(
-    () =>
-      Object.fromEntries(
-        groups.flatMap(({ items }) =>
-          items.map(([key, t]) => [key, renderPreview(t, post, brand, logoSvg)]),
-        ),
-      ),
-    [groups, brand, post, logoSvg],
-  );
+  const sections = useMemo(() => {
+    const usableMine = mine.filter((l) => (l.slide ?? l.first) && TEMPLATES[(l.slide ?? l.first).template] &&
+      (manage || (l.slide && fits(l.slide.template))));
+    const builtins = Object.keys(TEMPLATES).filter((key) => fits(key) && (manage || !hidden.includes(key) || key === current));
+    const favCards = favorites.flatMap((f) => {
+      if (f.startsWith('builtin:')) {
+        const key = f.slice(8);
+        return builtins.includes(key) ? [builtinCard(key)] : [];
+      }
+      const l = usableMine.find((x) => `mine:${x.id}` === f);
+      return l ? [mineCard(l)] : [];
+    });
+    return [
+      ...(favCards.length ? [{ id: 'fav', title: '즐겨찾는 템플릿', cards: favCards }] : []),
+      ...(usableMine.length ? [{ id: 'mine', title: '내 템플릿', cards: usableMine.map(mineCard) }] : []),
+      ...ROLE_ORDER.map((role) => ({
+        id: role,
+        title: ROLE_LABEL[role],
+        cards: builtins.filter((k) => TEMPLATES[k].meta.role === role).map((k) => builtinCard(k)),
+      })).filter((s) => s.cards.length),
+    ];
+  }, [post, brand, logoSvg, mine, hidden, favorites, current, manage]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Card actions: X hides a built-in template (or deletes one of mine, after a second
-  // tap), 수정 opens the template editor in a new tab (a built-in is copied into 내 템플릿
-  // first — built-ins themselves can't change), 복제 adds a copy to 내 템플릿.
   const [armed, setArmed] = useState(null);
   const [busy, setBusy] = useState(null);
   const call = async (url, init) => {
@@ -87,7 +105,7 @@ export default function TemplateGallery({
     if (!res.ok) throw new Error(d.error ?? `요청 실패 (${res.status})`);
     return d;
   };
-  const json = (body) => ({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const send = (method, body) => ({ method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const act = async (id, fn) => {
     setBusy(id);
     try {
@@ -99,137 +117,155 @@ export default function TemplateGallery({
       setBusy(null);
     }
   };
-  const copyBuiltin = (key) => call('/api/layouts', json({ builtin: key, brand: post.brand }));
+  const copyBuiltin = (key) => call('/api/layouts', send('POST', { builtin: key, brand: post.brand }));
   const copyMine = async (layout) => {
     const { post: lp } = await call(`/api/layouts/${layout.id}`);
-    return call('/api/layouts', json({ name: `${layout.name} 복사본`, post: lp }));
+    return call('/api/layouts', send('POST', { name: `${layout.name} 복사본`, post: lp }));
   };
-  const onX = (item) => {
+  const go = (url) => (onNavigate ? onNavigate(url) : (window.location.href = url));
+
+  const onX = (c) => {
+    const { item } = c;
     if (item.kind === 'builtin') {
-      act(item.key, async () => {
-        await call('/api/layouts/hidden', { ...json({ hidden: [...hidden, item.key] }), method: 'PUT' });
-        notify?.(`'${TEMPLATES[item.key].meta.label}'을 숨겼어요. 공통 템플릿 관리에서 다시 보이게 할 수 있어요.`);
+      const next = c.hidden ? hidden.filter((k) => k !== item.key) : [...hidden, item.key];
+      act(c.id, async () => {
+        await call('/api/layouts/hidden', send('PUT', { hidden: next }));
+        notify?.(c.hidden
+          ? `'${c.label}'을 다시 보이게 했어요.`
+          : `'${c.label}'을 숨겼어요. 공통 템플릿 관리에서 다시 보이게 할 수 있어요.`);
       });
       return;
     }
-    if (armed !== item.layout.id) {
-      setArmed(item.layout.id);
-      setTimeout(() => setArmed((a) => (a === item.layout.id ? null : a)), 3000);
+    if (armed !== c.id) {
+      setArmed(c.id);
+      setTimeout(() => setArmed((a) => (a === c.id ? null : a)), 3000);
       return;
     }
-    act(item.layout.id, async () => {
+    act(c.id, async () => {
       await call(`/api/layouts/${item.layout.id}`, { method: 'DELETE' });
       notify?.(`'${item.layout.name}'을 지웠어요.`);
     });
   };
-  const onEdit = (item) => {
-    if (item.kind === 'mine') {
-      window.open(`/templates/${item.layout.id}`, '_blank');
-      return;
-    }
-    // Open the tab inside the tap (popup blockers), point it at the copy once made.
-    const tab = window.open('about:blank', '_blank');
-    act(item.key, async () => {
-      const { layout } = await copyBuiltin(item.key);
-      if (tab) tab.location.href = `/templates/${layout.id}`;
-      else window.location.href = `/templates/${layout.id}`;
+  // 수정: a built-in can't change, so it is copied into 내 템플릿 first.
+  const onEdit = (c) => {
+    if (c.item.kind === 'mine') return go(`/templates/${c.item.layout.id}`);
+    act(c.id, async () => {
+      const { layout } = await copyBuiltin(c.item.key);
+      go(`/templates/${layout.id}`);
     });
   };
-  const onDuplicate = (item) =>
-    act(item.kind === 'mine' ? item.layout.id : item.key, async () => {
-      const { layout } = item.kind === 'mine' ? await copyMine(item.layout) : await copyBuiltin(item.key);
+  const onDuplicate = (c) =>
+    act(c.id, async () => {
+      const { layout } = c.item.kind === 'mine' ? await copyMine(c.item.layout) : await copyBuiltin(c.item.key);
       notify?.(`'${layout.name}'을 내 템플릿에 만들었어요.`);
     });
+  const onStar = (c) =>
+    act(c.id, async () => {
+      const next = favorites.includes(c.id) ? favorites.filter((f) => f !== c.id) : [...favorites, c.id];
+      await call('/api/layouts/favorites', send('PUT', { favorites: next }));
+    });
 
-  const sections = [
-    ...(myItems.length && onPickMine
-      ? [{
-          id: 'mine',
-          title: '내 템플릿',
-          cards: myItems.map(({ layout, html, size }) => ({
-            id: layout.id, item: { kind: 'mine', layout }, html, size, label: layout.name,
-            on: false, pick: () => onPickMine(layout),
-          })),
-        }]
-      : []),
-    ...groups.map(({ role, items }) => ({
-      id: role,
-      title: ROLE_LABEL[role],
-      cards: items.map(([key, t]) => ({
-        id: key, item: { kind: 'builtin', key }, ...previews[key], label: t.meta.label,
-        on: key === current, pick: () => onPick(key),
-      })),
-    })),
-  ];
+  const body = (
+    <div className="tg-body">
+      {sections.map((sec) => (
+        <section key={sec.id} className="tg-section">
+          <h3>{sec.title}</h3>
+          {chunk(sec.cards, ROW_MAX).map((row, r) => (
+            <TgRow key={r}>
+              {row.map((c) => {
+                const scale = CARD_W / c.size.width;
+                const starred = favorites.includes(c.id);
+                return (
+                  <div key={`${sec.id}-${c.id}`} className={`tg-card ${c.on ? 'on' : ''} ${c.hidden ? 'is-hidden' : ''}`}>
+                    <button
+                      className="tg-pick"
+                      onClick={c.pick ?? (() => onEdit(c))}
+                      aria-label={c.pick ? `${c.label} 고르기` : `${c.label} 수정`}
+                      disabled={busy === c.id}
+                    >
+                      <span className="tg-frame" style={{ width: CARD_W, height: Math.round(c.size.height * scale) }}>
+                        <iframe
+                          srcDoc={c.html}
+                          title={c.label}
+                          tabIndex={-1}
+                          loading="lazy"
+                          style={{ width: c.size.width, height: c.size.height, transform: `scale(${scale})` }}
+                        />
+                      </span>
+                    </button>
+                    <div className="tg-foot">
+                      <div className="tg-actions">
+                        <button disabled={busy === c.id} onClick={() => onEdit(c)}>수정</button>
+                        <button disabled={busy === c.id} onClick={() => onDuplicate(c)}>복제</button>
+                        <span className="tg-spacer" />
+                        <button
+                          className={`tg-icon ${starred ? 'starred' : ''}`}
+                          aria-pressed={starred}
+                          aria-label={starred ? '즐겨찾기에서 빼기' : '즐겨찾기'}
+                          disabled={busy === c.id}
+                          onClick={() => onStar(c)}
+                        >
+                          {starred ? '★' : '☆'}
+                        </button>
+                        <button
+                          className={`tg-icon ${armed === c.id ? 'armed' : ''}`}
+                          aria-label={c.item.kind === 'mine' ? '삭제' : c.hidden ? '다시 보이기' : '숨기기'}
+                          title={c.item.kind === 'mine' ? (armed === c.id ? '한 번 더 누르면 삭제' : '삭제') : c.hidden ? '다시 보이기' : '숨기기'}
+                          disabled={busy === c.id}
+                          onClick={() => onX(c)}
+                        >
+                          {armed === c.id ? '삭제?' : c.hidden ? '↺' : '✕'}
+                        </button>
+                      </div>
+                      <span className="tg-label">
+                        {c.label}
+                        {c.on && ' · 현재'}
+                        {c.hidden && ' · 숨김'}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </TgRow>
+          ))}
+        </section>
+      ))}
+    </div>
+  );
 
+  const head = (
+    <div className="tg-head">
+      <div className="tg-title">
+        <h2>{manage ? 'Templates' : 'Choose Template'}</h2>
+        {subtitle && <span className="tg-sub">{subtitle}</span>}
+      </div>
+      <div className="tg-head-actions">
+        {quickLabel && <button onClick={onQuick}>{quickLabel}</button>}
+        {manage && onCreate && <button className="primary" onClick={onCreate}>새 템플릿 만들기</button>}
+        {onClose && <button onClick={onClose} aria-label="닫기">✕</button>}
+      </div>
+    </div>
+  );
+
+  if (manage) {
+    return (
+      <div className="tg-manage">
+        {head}
+        {body}
+      </div>
+    );
+  }
   return (
     <div className="modal-back" onClick={onClose}>
       <div className="modal tg-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="tg-head">
-          <h2>{title}</h2>
-          <div className="tg-head-actions">
-            {quickLabel && <button onClick={onQuick}>{quickLabel}</button>}
-            <button onClick={onClose} aria-label="닫기">✕</button>
-          </div>
-        </div>
-        <div className="tg-body">
-          {sections.map((sec) => (
-            <section key={sec.id} className="tg-section">
-              <h3>{sec.title}</h3>
-              {chunk(sec.cards, ROW_MAX).map((row, r) => (
-                <TgRow key={r}>
-                  {row.map((c) => {
-                    const scale = CARD_W / c.size.width;
-                    const id = c.item.kind === 'mine' ? c.item.layout.id : c.item.key;
-                    return (
-                      <div key={c.id} className={`tg-card ${c.on ? 'on' : ''}`}>
-                        <div className="tg-frame-wrap">
-                          <button className="tg-pick" onClick={c.pick} aria-label={`${c.label} 고르기`}>
-                            <span className="tg-frame" style={{ width: CARD_W, height: Math.round(c.size.height * scale) }}>
-                              <iframe
-                                srcDoc={c.html}
-                                title={c.label}
-                                tabIndex={-1}
-                                loading="lazy"
-                                style={{ width: c.size.width, height: c.size.height, transform: `scale(${scale})` }}
-                              />
-                            </span>
-                          </button>
-                          <button
-                            className={`tg-x ${armed === id ? 'armed' : ''}`}
-                            aria-label={c.item.kind === 'mine' ? `${c.label} 삭제` : `${c.label} 숨기기`}
-                            title={c.item.kind === 'mine' ? (armed === id ? '한 번 더 누르면 삭제' : '삭제') : '숨기기'}
-                            disabled={busy === id}
-                            onClick={() => onX(c.item)}
-                          >
-                            {armed === id ? '삭제?' : '✕'}
-                          </button>
-                          <div className="tg-actions">
-                            <button disabled={busy === id} onClick={() => onEdit(c.item)}>수정</button>
-                            <button disabled={busy === id} onClick={() => onDuplicate(c.item)}>복제</button>
-                          </div>
-                        </div>
-                        <span className="tg-label">
-                          {c.label}
-                          {c.on && ' · 현재'}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </TgRow>
-              ))}
-            </section>
-          ))}
-        </div>
+        {head}
+        {body}
       </div>
     </div>
   );
 }
 
-const ROW_MAX = 25; // a row holds at most 25 templates, then a new row starts
-const chunk = (arr, n) => Array.from({ length: Math.ceil(arr.length / n) }, (_, i) => arr.slice(i * n, i * n + n));
-
-/** One sideways-scrolling row: swipe on touch, ‹ › buttons on PC. */
+/** One sideways-scrolling row: swipe on touch, ‹ › buttons on PC (hidden when it fits). */
 function TgRow({ children }) {
   const ref = useRef(null);
   const [edge, setEdge] = useState({ start: true, end: false });
@@ -238,7 +274,7 @@ function TgRow({ children }) {
     if (!el) return;
     setEdge({ start: el.scrollLeft <= 2, end: el.scrollLeft + el.clientWidth >= el.scrollWidth - 2 });
   };
-  useEffect(update, []);
+  useEffect(update, [children]);
   const by = (dir) => ref.current?.scrollBy({ left: dir * ref.current.clientWidth * 0.8, behavior: 'smooth' });
   return (
     <div className={`tg-row-wrap ${edge.start && edge.end ? 'fits' : ''}`}>

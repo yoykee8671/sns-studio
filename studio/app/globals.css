@@ -2,6 +2,7 @@
    one file for every weight),
    Freesentation for Hangul (KS X 1001 subset), letter-spacing 0. Card templates keep
    their own brand fonts (brands/*.json) — these only style the app around them. */
+@font-face { font-family: 'Poppins'; font-weight: 700; font-display: swap; src: url('/fonts/ui/poppins-700.woff2') format('woff2'); }
 @font-face { font-family: 'Inter'; font-weight: 100 900; font-display: swap; src: url('/fonts/ui/inter-var.woff2') format('woff2'); }
 @font-face { font-family: 'Freesentation'; font-weight: 400; font-display: swap; src: url('/fonts/ui/freesentation-400.woff2') format('woff2'); }
 @font-face { font-family: 'Freesentation'; font-weight: 500; font-display: swap; src: url('/fonts/ui/freesentation-500.woff2') format('woff2'); }
@@ -27,6 +28,7 @@
   --error: #c4302b;
   --error-soft: #fdeceb;
   --radius: 12px;
+  --a: #e6e6e6; /* 지정컬러 A */
   --pill: 980px;
   --font: Inter, Freesentation, -apple-system, BlinkMacSystemFont, sans-serif;
 }
@@ -69,6 +71,9 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1
 /* Home */
 .home { max-width: 880px; margin: 0 auto; padding: 48px 24px; }
 .home-head h1 { margin: 0 0 6px; font-size: 32px; font-weight: 800; }
+.brand-title { font-family: 'Poppins', var(--font); font-weight: 700; }
+.brand-title a { color: inherit; text-decoration: none; }
+.home-head { margin-bottom: 18px; }
 .home-head p { margin: 0 0 28px; color: var(--muted); }
 .post-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
 .post-item { position: relative; }
@@ -135,6 +140,11 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1
 .series-info { display: grid; gap: 2px; }
 .series-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .series-new { display: flex; gap: 8px; margin-top: 10px; }
+.series-create { display: grid; gap: 10px; padding-bottom: 14px; border-bottom: 1px solid #e5e5ea; }
+.series-create h3 { margin: 0; font-size: 15px; }
+.series-create-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.series-create-row select { border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; background: var(--surface); }
+.series-create-row .text-input { flex: 1; min-width: 180px; }
 .series-new .text-input { flex: 1; }
 
 /* 내 매거진 스타일 */
@@ -357,13 +367,22 @@ button.danger { color: var(--error); }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
 
 /* 템플릿 갤러리 */
-.tg-modal { width: min(960px, calc(100vw - 32px)); max-height: 86dvh; display: flex; flex-direction: column; }
-.tg-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.tg-head h2 { margin: 0; }
+/* 템플릿 창. Color A (#e6e6e6): dividers, card footers, the title bar. */
+.tg-modal {
+  width: min(960px, calc(100vw - 32px)); max-height: 86dvh; display: flex; flex-direction: column;
+  padding: 0; overflow: hidden;
+}
+.tg-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 16px 24px; background: var(--a); flex: none; position: sticky; top: 0; z-index: 2;
+}
+.tg-title { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.tg-head h2 { margin: 0; font-family: 'Poppins', var(--font); font-weight: 700; font-size: 22px; }
+.tg-sub { color: var(--muted); font-size: 13px; }
 .tg-head-actions { display: flex; gap: 8px; }
-.tg-body { overflow-y: auto; margin-top: 8px; padding-right: 4px; }
-.tg-section { padding: 6px 0 14px; }
-.tg-section + .tg-section { border-top: 1px solid #f9f9f9; }
+.tg-body { overflow-y: auto; padding: 4px 24px 20px; }
+.tg-section { padding: 6px 0 16px; }
+.tg-section + .tg-section { border-top: 2px solid var(--a); }
 /* Category titles: +5pt over the old 13px, bold. */
 .tg-section h3 { margin: 14px 0 10px; font-size: 20px; font-weight: 700; color: var(--ink); }
 .tg-row-wrap { position: relative; display: flex; align-items: center; gap: 6px; }
@@ -378,31 +397,35 @@ button.danger { color: var(--error); }
   flex: none; width: 36px; height: 36px; min-height: 0; padding: 0; border-radius: 50%;
   font-size: 22px; line-height: 1; color: var(--ink); display: grid; place-items: center;
 }
-.tg-card { flex: none; display: grid; justify-items: center; gap: 8px; scroll-snap-align: start; color: var(--ink); }
-.tg-frame-wrap { position: relative; }
-.tg-pick { padding: 0; min-height: 0; border: 0; background: none; border-radius: 12px; display: block; }
-.tg-frame {
-  display: block; position: relative; overflow: hidden; border-radius: 12px;
-  border: 2px solid var(--line); background: #fff;
+.tg-card {
+  flex: none; width: 154px; display: grid; scroll-snap-align: start; color: var(--ink);
+  border-radius: 12px; overflow: hidden; border: 2px solid var(--a); background: var(--a);
 }
-.tg-card.on .tg-frame, .tg-pick:hover .tg-frame { border-color: var(--accent); }
+.tg-card.on, .tg-card:has(.tg-pick:hover) { border-color: var(--accent); }
+.tg-card.is-hidden { opacity: .55; }
+.tg-pick { padding: 0; min-height: 0; border: 0; border-radius: 0; background: #fff; display: block; }
+.tg-frame { display: block; position: relative; overflow: hidden; background: #fff; }
 .tg-frame iframe { border: 0; transform-origin: top left; pointer-events: none; display: block; }
-/* Card controls over the thumbnail, like a photo attachment chip. */
-.tg-x {
-  position: absolute; top: 6px; right: 6px; width: 30px; height: 30px; min-height: 0; padding: 0;
-  border-radius: 50%; border: 0; background: rgba(40,60,60,.85); color: #fff; font-size: 14px;
-  display: grid; place-items: center;
-}
-.tg-x.armed { width: auto; padding: 0 10px; border-radius: 15px; background: var(--error); font-size: 12px; }
-.tg-actions { position: absolute; left: 6px; bottom: 6px; display: flex; gap: 4px; }
+/* Footer strip under the thumbnail: actions row, then the name. */
+.tg-foot { display: grid; gap: 6px; padding: 7px 7px 9px; background: var(--a); }
+.tg-actions { display: flex; align-items: center; gap: 4px; }
 .tg-actions button {
-  min-height: 0; padding: 5px 10px; font-size: 12px; font-weight: 600; border: 0; border-radius: 999px;
+  min-height: 0; padding: 3px 8px; font-size: 11px; font-weight: 600; border: 0; border-radius: 999px;
   background: rgba(40,40,40,.85); color: #fff;
 }
-.tg-label { font-size: 13px; color: var(--ink); text-align: center; max-width: 150px; }
+.tg-spacer { flex: 1; }
+.tg-actions .tg-icon {
+  width: 22px; height: 22px; padding: 0; display: grid; place-items: center; font-size: 12px;
+  background: rgba(40,60,60,.85);
+}
+.tg-actions .tg-icon.starred { background: #f5b301; color: #fff; }
+.tg-actions .tg-icon.armed { width: auto; padding: 0 7px; background: var(--error); }
+.tg-label { font-size: 13px; color: var(--ink); text-align: center; line-height: 1.35; }
+.tg-manage { background: var(--surface); border-radius: var(--radius); overflow: hidden; margin-bottom: 22px; }
 @media (max-width: 920px) {
   .tg-arrow { display: none; } /* phones swipe the row */
   .tg-modal { width: 100vw; max-width: 100vw; }
+  .tg-head, .tg-body { padding-left: 16px; padding-right: 16px; }
 }
 
 /* 추천 조합 세트 카드 */

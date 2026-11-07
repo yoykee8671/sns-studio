@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { RATIOS, DEFAULT_RATIO } from '@/lib/templates/sizes.mjs';
 import { SETS } from '@/lib/templates/sets.mjs';
@@ -31,6 +31,14 @@ export default function NewPost({ brands, aiReady = false, layouts = [], embedde
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+
+  // A manuscript being written can't be lost by closing or reloading the page.
+  useEffect(() => {
+    if (!text.trim()) return undefined;
+    const warn = (e) => e.preventDefault();
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [text]);
 
   const create = async (e) => {
     e.preventDefault();

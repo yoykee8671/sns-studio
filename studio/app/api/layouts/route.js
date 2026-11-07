@@ -1,9 +1,9 @@
-import { listLayouts, createLayout, readHidden } from '@/lib/layouts.mjs';
+import { listLayouts, createLayout, readHidden, readFavorites } from '@/lib/layouts.mjs';
 import { loadBrand } from '@/lib/store.mjs';
 
 export async function GET() {
-  const [layouts, hidden] = await Promise.all([listLayouts(), readHidden()]);
-  return Response.json({ layouts, hidden });
+  const [layouts, hidden, favorites] = await Promise.all([listLayouts(), readHidden(), readFavorites()]);
+  return Response.json({ layouts, hidden, favorites });
 }
 
 // { name, desc?, post } saves an edited post's design; { builtin, brand, name? } copies
