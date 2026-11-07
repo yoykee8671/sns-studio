@@ -107,6 +107,8 @@ const CHEVRON_LEFT = <path d="M15 18l-6-6 6-6" />;
 const CHEVRON_RIGHT = <path d="M9 18l6-6-6-6" />;
 const MORE = <><circle cx="5" cy="12" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /></>;
 const PLUS = <path d="M12 5v14M5 12h14" />;
+const CHEVRON_UP = <path d="M6 15l6-6 6 6" />;
+const CHEVRON_DOWN = <path d="M6 9l6 6 6-6" />;
 
 const loadPresets = () => {
   try {
@@ -142,7 +144,50 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
   const [uploadNote, setUploadNote] = useState(null); // "2/5" while a batch uploads
   const [menuOpen, setMenuOpen] = useState(false); // phone: the "더보기" action sheet
 
-  const mainFrame = useRef(null);
+  const mainFrame = useRef(null); // the visible preview iframe
+  const frameA = useRef(null);
+  const frameB = useRef(null);
+  // Preview double buffer: a new render loads in the hidden iframe and is swapped in
+  // once its images are ready, so editing never flashes an empty (black) preview.
+  const [buf, setBuf] = useState({ a: '', b: '', show: 'a', pending: null });
+  // Phone: the pinned preview can be folded to a small strip (remembered), and it folds
+  // by itself while the keyboard is up so the field being typed in stays visible.
+  const [folded, setFolded] = useState(false);
+  const [typing, setTyping] = useState(false);
+  useEffect(() => {
+    try {
+      setFolded(localStorage.getItem('sns-studio-preview-folded') === '1');
+    } catch {}
+  }, []);
+  const toggleFold = () =>
+    setFolded((f) => {
+      try {
+        localStorage.setItem('sns-studio-preview-folded', f ? '0' : '1');
+      } catch {}
+      return !f;
+    });
+  useEffect(() => {
+    let t;
+    const isField = (el) => el?.matches?.('input:not([type=range]):not([type=file]):not([type=color]), textarea, [contenteditable="true"]');
+    const onIn = (e) => {
+      if (window.innerWidth > 920 || !isField(e.target)) return;
+      clearTimeout(t);
+      setTyping(true);
+      setTimeout(() => e.target.scrollIntoView?.({ block: 'center', behavior: 'smooth' }), 250);
+    };
+    const onOut = () => {
+      clearTimeout(t);
+      t = setTimeout(() => setTyping(isField(document.activeElement)), 120); // moving between fields
+    };
+    document.addEventListener('focusin', onIn);
+    document.addEventListener('focusout', onOut);
+    return () => {
+      document.removeEventListener('focusin', onIn);
+      document.removeEventListener('focusout', onOut);
+      clearTimeout(t);
+    };
+  }, []);
+  const compact = folded || typing;
   const thumbFrames = useRef([]);
   const selRef = useRef(sel);
   selRef.current = sel;
@@ -196,13 +241,13 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
       const { data } = e;
       if (data?.type === 'slide-report') {
         let index = null;
-        if (e.source === mainFrame.current?.contentWindow) index = selRef.current;
+        if (e.source === frameA.current?.contentWindow || e.source === frameB.current?.contentWindow) index = selRef.current;
         thumbFrames.current.forEach((f, i) => {
           if (f && e.source === f.contentWindow) index = i;
         });
         if (index !== null) setReports((r) => ({ ...r, [index]: data.report }));
       }
-      if (e.source !== mainFrame.current?.contentWindow) return;
+      if (e.source !== frameA.current?.contentWindow && e.source !== frameB.current?.contentWindow) return;
       if (data?.type === 'sticker-move') {
         update((p) => {
           const st = p.slides[selRef.current].stickers.find((s) => s.id === data.id);
@@ -272,6 +317,18 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
         : '',
     [debounced, ctx, sel, slideHtml],
   );
+  useEffect(() => {
+    setBuf((b) => {
+      if (!b.a && !b.b) return { ...b, a: mainHtml, show: 'a' };
+      if (b[b.show] === mainHtml) return b.pending ? { ...b, pending: null } : b;
+      const hidden = b.show === 'a' ? 'b' : 'a';
+      return { ...b, [hidden]: mainHtml, pending: hidden };
+    });
+  }, [mainHtml]);
+  const onFrameLoad = (which) =>
+    setBuf((b) => (b.pending === which ? { ...b, show: which, pending: null } : b));
+  mainFrame.current = buf.show === 'a' ? frameA.current : frameB.current;
+
   const thumbHtml = useMemo(
     () => (debounced && ctx ? debounced.slides.map((_, i) => slideHtml(debounced, i, 'export')) : []),
     [debounced, ctx, slideHtml],
@@ -286,7 +343,12 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
       const { width, height } = entry.contentRect;
       if (window.innerWidth <= 920) {
         // Phone: the preview spans ~72% of the screen width (ratio kept); the stage grows
-        // to fit it, capped at 66% of the screen height for tall 9:16 slides.
+        // to fit it, capped at 66% of the screen height for tall 9:16 slides. Folded (or
+        // while typing) it shrinks to a small strip.
+        if (compact) {
+          setScale(Math.max(0.05, Math.min(width / size.width, 130 / size.height)));
+          return;
+        }
         const maxH = window.innerHeight * 0.66 - 52; // 52 = ratio switch under the preview
         setScale(Math.max(0.1, Math.min(Math.min(width, window.innerWidth * 0.72) / size.width, maxH / size.height)));
         return;
@@ -297,7 +359,7 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
     });
     ro.observe(stageRef.current);
     return () => ro.disconnect();
-  }, [post !== null, size.width, size.height]);
+  }, [post !== null, size.width, size.height, compact]);
 
   const save = useCallback(async () => {
     setBusy('save');
@@ -702,7 +764,7 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
       (post.source?.handle && `@${post.source.handle} 소개`) || post.id;
 
   return (
-    <div className="editor">
+    <div className={`editor ${typing ? 'typing' : ''}`}>
       <header className="topbar">
         <div className="topbar-left">
           <Link href={isLayout ? '/#my-templates' : `/?account=${brandId}`} className="back" aria-label="목록으로"><Icon d={CHEVRON_LEFT} size={22} /></Link>
@@ -795,7 +857,15 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
 
       <div className={`workspace ${blocked ? 'with-banner' : ''}`}>
 
-        <section className="stage" ref={stageRef}>
+        <section className={`stage ${compact ? 'compact' : ''}`} ref={stageRef}>
+          <button
+            className="btn-icon stage-fold"
+            aria-label={folded ? '미리보기 펼치기' : '미리보기 접기'}
+            aria-expanded={!folded}
+            onClick={toggleFold}
+          >
+            <Icon d={folded ? CHEVRON_DOWN : CHEVRON_UP} size={16} />
+          </button>
           <div className="stage-row">
           <button
             className="btn-icon stage-nav"
@@ -806,14 +876,19 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
             <Icon d={CHEVRON_LEFT} size={18} />
           </button>
           <div className="stage-frame" style={{ width: size.width * scale, height: size.height * scale }}>
-            {(
+            {['a', 'b'].map((k) => (
               <iframe
-                ref={mainFrame}
-                srcDoc={mainHtml}
-                title="슬라이드 미리보기"
+                key={k}
+                ref={k === 'a' ? frameA : frameB}
+                srcDoc={buf[k]}
+                title={k === buf.show ? '슬라이드 미리보기' : '미리보기 준비 중'}
+                aria-hidden={k !== buf.show}
+                tabIndex={k === buf.show ? 0 : -1}
+                className={k === buf.show ? 'on' : 'standby'}
+                onLoad={() => onFrameLoad(k)}
                 style={{ width: size.width, height: size.height, transform: `scale(${scale})` }}
               />
-            )}
+            ))}
           </div>
           <button
             className="btn-icon stage-nav"
@@ -1497,7 +1572,7 @@ function AdjustPanel({ fields, sliders, slide, onSlider, onTextStyle }) {
             <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M5 12h14" /></svg>
           </button>
           <div className="adj-track">
-            <span className="adj-zero" style={{ left: `${pct}%` }} aria-hidden="true" />
+            {pct > 2 && pct < 98 && <span className="adj-zero" style={{ left: `${pct}%` }} aria-hidden="true" />}
             <input
               type="range"
               min={min}

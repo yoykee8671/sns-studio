@@ -15,6 +15,10 @@ const TYPES = {
   '.webm': 'video/webm',
 };
 
+// Uploaded files get unique names (timestamp prefix) and never change in place, so the
+// browser may keep them: previews re-render often and must not re-download multi-MB photos.
+const CACHE = 'private, max-age=31536000, immutable';
+
 // Serves uploaded originals from content/<brand>/<post>/media/, with Range support for video seeking.
 export async function GET(req, { params }) {
   const { brand: brandId, id, path: parts } = await params;
@@ -40,7 +44,7 @@ export async function GET(req, { params }) {
           'Content-Length': String(end - start + 1),
           'Content-Range': `bytes ${start}-${end}/${size}`,
           'Accept-Ranges': 'bytes',
-          'Cache-Control': 'no-store',
+          'Cache-Control': CACHE,
         },
       });
     }
@@ -49,7 +53,7 @@ export async function GET(req, { params }) {
         'Content-Type': type,
         'Content-Length': String(size),
         'Accept-Ranges': 'bytes',
-        'Cache-Control': 'no-store',
+        'Cache-Control': CACHE,
       },
     });
   } catch {

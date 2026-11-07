@@ -222,7 +222,15 @@ button.danger { color: var(--error); }
   position: relative; overflow: hidden; border-radius: 10px;
   box-shadow: 0 18px 50px rgba(0,0,0,.22); flex: none;
 }
-.stage-frame iframe { border: 0; transform-origin: 0 0; display: block; }
+.stage-frame iframe { border: 0; transform-origin: 0 0; display: block; position: absolute; left: 0; top: 0; }
+.stage-frame iframe.standby { visibility: hidden; pointer-events: none; }
+.stage { position: relative; }
+.stage-fold { display: none !important; }
+/* Grid/flex children may shrink below their content (long file names, etc.). */
+.panel-body { grid-template-columns: minmax(0, 1fr); }
+.card { grid-template-columns: minmax(0, 1fr); }
+.field, .card > *, .photo-line { min-width: 0; }
+.workspace, .panel { min-width: 0; }
 .stage-hint { margin: 0; color: var(--muted); font-size: 12px; order: 3; }
 .stage-size { display: flex; align-items: center; gap: 12px; }
 
@@ -529,6 +537,16 @@ button.tool-dark.on { background: #1d1d1f; border-color: #1d1d1f; box-shadow: in
     position: sticky; top: 0; z-index: 12;
   }
   .stage-nav, .stage-hint { display: none !important; }
+  .stage-fold {
+    display: inline-flex !important; position: absolute; top: 8px; right: 10px; z-index: 3;
+    width: 32px; height: 32px; min-height: 0; background: rgba(255,255,255,.92); border-color: var(--line);
+  }
+  .stage.compact { padding: 8px 8px 8px; }
+  .stage.compact .stage-size { display: none; }
+  /* Keyboard up: no bottom bar, so the field being typed in has the room. */
+  .editor.typing { padding-bottom: 0; }
+  .editor.typing .mobile-bar { display: none; }
+  html, body { overflow-x: hidden; }
   .panel { border-left: 0; display: block; }
   .panel-head { padding: 12px 16px 0; gap: 12px; }
   .thumb { cursor: default; }
