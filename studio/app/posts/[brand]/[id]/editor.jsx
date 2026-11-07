@@ -4,6 +4,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { getTemplate, resolveTemplate, TEMPLATES, isCoverSlide } from '@/lib/templates/index.mjs';
+import { carryText } from '@/lib/templates/carry-text.mjs';
 import { autoFormat, needsPermission } from '@/lib/post-rules.mjs';
 import { RATIOS } from '@/lib/templates/sizes.mjs';
 import { STICKER_TYPES, createSticker, resolveColor } from '@/lib/stickers.mjs';
@@ -92,6 +93,8 @@ const photoPatch = (tMeta, slide) =>
 
 // Slide keys that hold content (kept when a 내 템플릿 design is applied to a slide).
 const MEDIA_KEYS = ['media', 'mediaType', 'imageSha256', 'image', 'focus', 'zoom'];
+
+const pickFields = (slide, meta) => Object.fromEntries(meta.fields.map((f) => [f.key, slide[f.key]]));
 
 const reorder = (arr, from, to) => {
   const next = [...arr];
@@ -230,19 +233,38 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
     toastTimer.current = setTimeout(() => setToast(null), 3500);
   }, []);
 
-  const update = useCallback((fn) => {
+  // 실행 취소/다시 실행: every edit pushes the previous post onto `past`. Edits of the
+  // same kind in quick succession (typing in one field, dragging one slider) share a step.
+  const postRef = useRef(null);
+  postRef.current = post;
+  const past = useRef([]);
+  const undoRef = useRef(null);
+  const redoRef = useRef(null);
+  const future = useRef([]);
+  const lastStep = useRef({ group: null, at: 0 });
+  const [, setHistoryTick] = useState(0);
+  const update = useCallback((fn, group = null) => {
+    const now = Date.now();
+    const same = group && lastStep.current.group === group && now - lastStep.current.at < 1000;
+    if (!same && postRef.current) {
+      past.current.push(postRef.current);
+      if (past.current.length > 100) past.current.shift();
+    }
+    lastStep.current = { group, at: now };
+    future.current = [];
     setPost((p) => {
       const next = structuredClone(p);
       fn(next);
       return next;
     });
     setDirty(true);
+    setHistoryTick((t) => t + 1);
   }, []);
   const updateSlide = (i, patch) =>
     update((p) => {
       Object.assign(p.slides[i], patch);
       for (const [k, v] of Object.entries(patch)) if (v === undefined) delete p.slides[i][k];
-    });
+    }, `${i}:${Object.keys(patch).sort().join(',')}`);
 
   // Reports, sticker drags/resizes and photo pans come from the slide iframes.
   useEffect(() => {
@@ -406,6 +428,13 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
       if ((e.metaKey || e.ctrlKey) && e.key === 's') {
         e.preventDefault();
         save();
+      }
+      // ⌘Z / ⇧⌘Z outside text fields (inside one, the browser's own text undo applies).
+      const inText = e.target?.matches?.('input, textarea, [contenteditable="true"]');
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z' && !inText) {
+        e.preventDefault();
+        if (e.shiftKey) redoRef.current?.();
+        else undoRef.current?.();
       }
     };
     window.addEventListener('keydown', onKey);
@@ -687,6 +716,30 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
     if (!t.mediaTypes.length || t.usesMedia?.(slide) === false || (t.brandClosing && !slide.media)) return 'none';
     return 'empty';
   };
+  const restore = (p) => {
+    setPost(p);
+    setDirty(true);
+    setImages(p.slides.map((s) => (s.media ? { state: 'ok', sha: s.imageSha256 } : { state: mediaStateOf(p, s) })));
+    setReports({});
+    setSel((i) => Math.min(i, p.slides.length - 1));
+    lastStep.current = { group: null, at: 0 };
+    setHistoryTick((t) => t + 1);
+  };
+  const undo = () => {
+    const prev = past.current.pop();
+    if (!prev) return;
+    future.current.push(postRef.current);
+    restore(prev);
+  };
+  const redo = () => {
+    const next = future.current.pop();
+    if (!next) return;
+    past.current.push(postRef.current);
+    restore(next);
+  };
+  undoRef.current = undo;
+  redoRef.current = redo;
+
   const insertSlide = (slide, at) => {
     update((p) => p.slides.splice(at, 0, slide));
     setImages((im) => {
@@ -868,6 +921,11 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
     const next = { ...t.meta.newSlide(p), ...design };
     for (const k of MEDIA_KEYS) if (keep[k] !== undefined) next[k] = keep[k];
     for (const f of t.meta.fields) if (keep[f.key]) next[f.key] = keep[f.key];
+    // Text from fields the new template names differently follows by role.
+    const fromKey = keep.template ?? p.template;
+    if (Object.keys(keep).length && TEMPLATES[fromKey]) {
+      Object.assign(next, carryText(fromKey, TEMPLATES[fromKey].meta, key, t.meta, { ...keep, ...pickFields(next, t.meta) }));
+    }
     if (key !== p.template) next.template = key;
     else delete next.template;
     return { ...next, ...photoPatch(t.meta, next) };
@@ -1154,6 +1212,12 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
                     {busy === 'one' ? '만드는 중…' : `이 장만 ${format.toUpperCase()} 받기`}
                   </button>
                 )}
+                <button className="btn-icon history-btn" aria-label="실행 취소" title="실행 취소 (⌘Z)" onClick={undo} disabled={!past.current.length}>
+                  <Icon d={<><path d="M9 14L4 9l5-5" /><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" /></>} size={18} />
+                </button>
+                <button className="btn-icon history-btn" aria-label="다시 실행" title="다시 실행 (⇧⌘Z)" onClick={redo} disabled={!future.current.length}>
+                  <Icon d={<><path d="M15 14l5-5-5-5" /><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13" /></>} size={18} />
+                </button>
                 <button className="danger" onClick={() => removeSlide(sel)} disabled={post.slides.length === 1 || busy === 'upload'}>이 장 삭제</button>
               </div>
 
@@ -1505,8 +1569,11 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
           }}
           onPick={(key) => {
             if (gallery === 'switch') {
+              const fromKey = slide.template ?? post.template;
               updateSlide(sel, {
                 template: key === post.template ? undefined : key,
+                // What was written follows into the new template's matching fields.
+                ...carryText(fromKey, TEMPLATES[fromKey].meta, key, TEMPLATES[key].meta, slide),
                 ...photoPatch(TEMPLATES[key].meta, slide),
                 ...(key === 'closing-image'
                   ? { media: undefined, mediaType: undefined, imageSha256: undefined, image: undefined }

@@ -424,6 +424,7 @@ button.danger { color: var(--error); }
 .slide-tools { display: flex; gap: 6px; flex-wrap: wrap; }
 .slide-tools button { padding: 5px 12px; min-height: 32px; font-size: 12px; }
 .slide-tools button.danger { margin-left: auto; color: var(--error); }
+.slide-tools .history-btn { width: 32px; height: 32px; min-height: 0; padding: 0; color: var(--ink); }
 .thumb-closing { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 6px; }
 .setup-guide { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-size: 13px; }
 .setup-guide summary { cursor: pointer; font-weight: 600; }
