@@ -45,13 +45,15 @@ async function posterFrame(video, dir) {
   return out;
 }
 
-async function composeVideo({ video, overlayPng, box, fit, baseColor, size, out }) {
+async function composeVideo({ video, overlayPng, box, fit, baseColor, size, out, focus = '50% 50%' }) {
   const { width: W, height: H } = size;
-  const bw = Math.round(box.width);
-  const bh = Math.round(box.height);
+  const bw = Math.max(2, Math.round(box.width / 2) * 2);
+  const bh = Math.max(2, Math.round(box.height / 2) * 2);
+  // Cover-fit crops around the panned focus point (slide.focus), like the photo preview.
+  const [fx, fy] = (/^\d{1,3}% \d{1,3}%$/.test(focus) ? focus : '50% 50%').split(' ').map((v) => parseInt(v, 10) / 100);
   const scale =
     fit === 'cover'
-      ? `scale=${bw}:${bh}:force_original_aspect_ratio=increase,crop=${bw}:${bh}`
+      ? `scale=${bw}:${bh}:force_original_aspect_ratio=increase,crop=${bw}:${bh}:(iw-${bw})*${fx}:(ih-${bh})*${fy}`
       : `scale=${bw}:${bh}:force_original_aspect_ratio=decrease`;
   const filter = [
     `color=c=${baseColor}:s=${W}x${H}:r=30[base]`,
@@ -166,18 +168,37 @@ export async function renderPost(post, { format, quality = 92, allowChanged = fa
         waitUntil: 'load',
       });
       await page.evaluate(() => window.__ready);
+      // Templates with their own overlay mode (curation-frame) declare the base color and
+      // fit on <body>. Any other template: the video goes where its photo element sits
+      // (zoom/position included), the page color becomes the video's base, and the photo
+      // element plus page backgrounds are made transparent so only the design is overlaid.
       const geo = await page.evaluate(() => {
-        const r = document.querySelector('[data-media-box]').getBoundingClientRect();
-        return {
-          box: { left: r.left, top: r.top, width: r.width, height: r.height },
-          baseColor: document.body.dataset.baseColor,
-          fit: document.body.dataset.fit,
+        const hex = (c) => {
+          const m = /rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/.exec(c ?? '');
+          if (!m || (m[4] !== undefined && +m[4] === 0)) return null;
+          return '#' + [m[1], m[2], m[3]].map((v) => (+v).toString(16).padStart(2, '0')).join('');
         };
+        const body = document.body;
+        const own = body.dataset.baseColor;
+        const media = document.querySelector('[data-media]');
+        const el = own ? document.querySelector('[data-media-box]') : (media ?? document.querySelector('[data-media-box]'));
+        const r = el.getBoundingClientRect();
+        const geo = {
+          box: { left: r.left, top: r.top, width: r.width, height: r.height },
+          baseColor: own || hex(getComputedStyle(body).backgroundColor) || hex(getComputedStyle(document.documentElement).backgroundColor) || '#000000',
+          fit: body.dataset.fit || (media && getComputedStyle(media).objectFit === 'contain' ? 'contain' : 'cover'),
+        };
+        if (!own) {
+          const st = document.createElement('style');
+          st.textContent = 'html,body{background:transparent!important}[data-media]{visibility:hidden!important}';
+          document.head.appendChild(st);
+        }
+        return geo;
       });
       const overlayPng = path.join(tmp, `${name}-overlay.png`);
       await page.screenshot({ path: overlayPng, omitBackground: true });
       const out = path.join(tmp, `${name}.mp4`);
-      await composeVideo({ video: file, overlayPng, ...geo, size, out });
+      await composeVideo({ video: file, overlayPng, ...geo, size, out, focus: slide.focus });
       files.push({ name: `${name}.mp4`, data: await readFile(out), type: 'video/mp4' });
     }
 

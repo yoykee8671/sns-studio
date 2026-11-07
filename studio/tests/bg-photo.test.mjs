@@ -15,7 +15,7 @@ test('every template has a photo slot', () => {
 
 test('text-only templates take an uploaded photo as a veiled background', () => {
   const dark = render('quote-dark', { media: 'media/a.jpg' }, '/m/a.jpg');
-  assert.match(dark, /class="u-bg" data-media-box><img data-media src="\/m\/a\.jpg"/);
+  assert.match(dark, /class="u-bg" data-media-box><img class="u-bg-media" data-media src="\/m\/a\.jpg"/);
   assert.match(dark, /rgba\(0,0,0,\.55\)/); // dark page → dark veil
   const paper = render('inner-essay', { media: 'media/a.jpg' }, '/m/a.jpg');
   assert.match(paper, /rgba\(255,255,255,\.72\)/); // paper page → light veil

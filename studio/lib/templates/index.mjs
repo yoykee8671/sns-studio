@@ -46,8 +46,16 @@ const MODULES = {
 // a photo slot (text-only ones take it as a background, bg-photo.mjs) and the per-slide
 // 요소 옮기기 overrides (layout-overrides.mjs).
 export const TEMPLATES = Object.fromEntries(
-  Object.entries(MODULES).map(([key, mod]) => [key, withLayout(withBgPhoto(withSource(key, mod)))]),
+  Object.entries(MODULES).map(([key, mod]) => [key, withLayout(withVideo(withBgPhoto(withSource(key, mod))))]),
 );
+
+// Every photo slot also takes a video: the editor previews it playing, and the export
+// composites the template (text, stickers, gradients) over it as an MP4 (render-server).
+function withVideo(mod) {
+  const { meta } = mod;
+  if (!meta.mediaTypes.includes('image') || meta.mediaTypes.includes('video')) return mod;
+  return { ...mod, meta: { ...meta, mediaTypes: [...meta.mediaTypes, 'video'] } };
+}
 
 // Gallery grouping/order: cover → any → inner → last.
 export const ROLE_ORDER = ['cover', 'any', 'inner', 'last'];

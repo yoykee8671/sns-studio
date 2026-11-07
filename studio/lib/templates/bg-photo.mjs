@@ -2,7 +2,7 @@
 // an uploaded photo as a full-bleed background behind their content, veiled so the text
 // keeps reading — dark templates get a dark veil, paper ones a light one (overridable).
 // The layer is a [data-media-box], so 요소 옮기기 can move/resize it and the photo pans.
-import { escapeHtml } from './runtime.mjs';
+import { mediaTag } from './runtime.mjs';
 
 const option = {
   key: 'bgPhoto',
@@ -46,10 +46,10 @@ export function withBgPhoto(mod) {
       const css = `<style>
   body { isolation: isolate; }
   .u-bg { position: absolute; inset: 0; z-index: -1; overflow: hidden; }
-  .u-bg img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: ${focus}; }
+  .u-bg [data-media] { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: ${focus}; }
   .u-bg::after { content: ''; position: absolute; inset: 0; background: ${veilCss}; pointer-events: none; }
 </style>`;
-      const layer = `<div class="u-bg" data-media-box><img data-media src="${escapeHtml(o.mediaSrc)}" alt=""></div>`;
+      const layer = `<div class="u-bg" data-media-box>${mediaTag({ src: o.mediaSrc, type: o.mediaType, mode: o.mode, className: 'u-bg-media' })}</div>`;
       const head = html.lastIndexOf('</head>');
       let out = head > 0 ? html.slice(0, head) + css + html.slice(head) : html;
       const bodyAt = out.indexOf('<body');
