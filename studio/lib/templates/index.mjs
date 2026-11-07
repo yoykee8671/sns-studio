@@ -18,6 +18,7 @@ import * as quoteSerif from './quote-serif.mjs';
 import * as lastFollow from './last-follow.mjs';
 import * as closingImage from './closing-image.mjs';
 import { withSource } from './source-tag.mjs';
+import { withLayout } from './layout-overrides.mjs';
 
 const MODULES = {
   'editorial-photo': editorialPhoto,
@@ -40,9 +41,10 @@ const MODULES = {
   'closing-image': closingImage,
 };
 
-// Every template gets the shared 출처 field + show/hide/position options (source-tag.mjs).
+// Every template gets the shared 출처 field + show/hide/position options (source-tag.mjs)
+// and the per-slide 요소 옮기기 overrides (layout-overrides.mjs).
 export const TEMPLATES = Object.fromEntries(
-  Object.entries(MODULES).map(([key, mod]) => [key, withSource(key, mod)]),
+  Object.entries(MODULES).map(([key, mod]) => [key, withLayout(withSource(key, mod))]),
 );
 
 // Gallery grouping/order: cover → any → inner → last.

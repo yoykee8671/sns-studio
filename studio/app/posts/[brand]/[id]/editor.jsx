@@ -154,6 +154,8 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
   // by itself while the keyboard is up so the field being typed in stays visible.
   const [folded, setFolded] = useState(false);
   const [typing, setTyping] = useState(false);
+  // 요소 옮기기: text blocks / photo box drag in the preview (with snapping guides).
+  const [layoutEdit, setLayoutEdit] = useState(false);
   useEffect(() => {
     try {
       setFolded(localStorage.getItem('sns-studio-preview-folded') === '1');
@@ -262,6 +264,14 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
           if (data.w) st.w = data.w;
         });
       }
+      if (data?.type === 'layout-move' && /^[a-z][a-z0-9_-]{0,30}$/i.test(data.key ?? '')) {
+        update((p) => {
+          const s = p.slides[selRef.current];
+          const cur = { ...(s.layout?.[data.key] ?? {}) };
+          for (const k of ['x', 'y', 'w', 'h']) if (Number.isFinite(data[k])) cur[k] = Math.round(data[k]);
+          s.layout = { ...(s.layout ?? {}), [data.key]: cur };
+        });
+      }
       if (data?.type === 'media-pan') {
         update((p) => {
           p.slides[selRef.current].focus = `${data.x}% ${data.y}%`;
@@ -310,13 +320,11 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
     },
     [ctx, brandId, postId],
   );
-  const mainHtml = useMemo(
-    () =>
-      debounced && ctx
-        ? slideHtml(debounced, Math.min(sel, debounced.slides.length - 1), 'preview')
-        : '',
-    [debounced, ctx, sel, slideHtml],
-  );
+  const mainHtml = useMemo(() => {
+    if (!debounced || !ctx) return '';
+    const html = slideHtml(debounced, Math.min(sel, debounced.slides.length - 1), 'preview');
+    return layoutEdit ? html.replace('<body ', '<body data-layout-edit="1" ') : html;
+  }, [debounced, ctx, sel, slideHtml, layoutEdit]);
   useEffect(() => {
     setBuf((b) => {
       if (!b.a && !b.b) return { ...b, a: mainHtml, show: 'a' };
@@ -1011,6 +1019,30 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
                   <p className="note">장마다 다른 템플릿을 쓸 수 있어요. 표지는 1장에 어울리는 템플릿을 골라주세요.</p>
                 </div>
               )}
+
+              <div className="field">
+                <label>요소 옮기기</label>
+                <div className="card row-card">
+                  <div className="row-card-text">
+                    <strong>{layoutEdit ? '미리보기에서 글·사진 칸을 끌어 옮기세요' : '글·사진 칸 위치와 사진 칸 크기 바꾸기'}</strong>
+                    <span className="note">
+                      다른 요소나 가운데·여백에 맞으면 가이드 선이 나오며 착 붙어요. 사진 칸은 오른쪽 아래 핸들로 크기를 바꿔요.
+                    </span>
+                  </div>
+                  <button
+                    className={layoutEdit ? 'primary' : ''}
+                    aria-pressed={layoutEdit}
+                    onClick={() => setLayoutEdit((v) => !v)}
+                  >
+                    {layoutEdit ? '완료' : '옮기기'}
+                  </button>
+                </div>
+                {slide.layout && Object.keys(slide.layout).length > 0 && (
+                  <button className="link small" onClick={() => updateSlide(sel, { layout: undefined })}>
+                    이 장의 위치·크기 초기화
+                  </button>
+                )}
+              </div>
 
               {isLayout && (
                 <div className="field">

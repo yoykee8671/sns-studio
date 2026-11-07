@@ -1,13 +1,43 @@
 // In-page runtime shared by every template. Injected as an inline <script>.
 // - picks the top tone (white/black) from the photo under [data-tone-probe], if the template has one
 // - reports per-field line counts (wrap-aware) and overflow for every [data-field] element
-// - in preview mode: stickers drag + corner-handle resize, and the background photo pans by drag
+// - in preview mode: stickers drag + corner-handle resize, and the photo pans by drag
+// - in 요소 옮기기 mode (body[data-layout-edit]): text blocks and the photo box move by drag
+//   with snapping guides (+ haptic tick), and the photo box resizes by its corner handle
 
 export function slideRuntime({ toneThreshold = 0.62 } = {}) {
   return `
 (() => {
   const W = innerWidth, H = innerHeight;
   const send = (msg) => { if (window.parent !== window) window.parent.postMessage(msg, '*'); };
+
+  // 요소 옮기기 offsets arrive as CSS \`translate\` (layout-overrides.mjs), which inline
+  // text (a <span> title) ignores; those move with relative left/top instead.
+  const isInline = (el) => getComputedStyle(el).display === 'inline';
+  const readTranslate = (el) => {
+    const t = getComputedStyle(el).translate;
+    if (!t || t === 'none') return [0, 0];
+    const [x, y] = t.split(' ').map(parseFloat);
+    return [x || 0, y || 0];
+  };
+  const offsetOf = (el) =>
+    isInline(el) && el.dataset.offX !== undefined ? [+el.dataset.offX, +el.dataset.offY] : readTranslate(el);
+  const setOffset = (el, x, y) => {
+    if (isInline(el)) {
+      el.style.setProperty('translate', 'none', 'important');
+      el.style.setProperty('position', 'relative', 'important');
+      el.style.setProperty('left', x + 'px', 'important');
+      el.style.setProperty('top', y + 'px', 'important');
+      el.dataset.offX = x; el.dataset.offY = y;
+    } else {
+      el.style.setProperty('translate', x + 'px ' + y + 'px', 'important');
+    }
+  };
+  for (const el of document.querySelectorAll('[data-field]')) {
+    if (!isInline(el)) continue;
+    const [x, y] = readTranslate(el);
+    if (x || y) setOffset(el, x, y);
+  }
 
   window.__ready = (async () => {
     await document.fonts.ready;
@@ -97,6 +127,80 @@ export function slideRuntime({ toneThreshold = 0.62 } = {}) {
     '@media (pointer: coarse){.sticker .st-handle{opacity:.85}}';
   document.head.appendChild(style);
 
+  // ---- 요소 옮기기 ----
+  const layoutEdit = document.body.dataset.layoutEdit === '1';
+  const MOVABLE = '[data-field], [data-media-box]';
+  const keyOf = (el) => (el.matches('[data-media-box]') ? 'media' : el.dataset.field);
+  const SNAP = 12; // canvas px
+  let lay = null;
+  let guides = null;
+  // Haptic tick when a guide catches: Vibration API (Android); on iPhone (no vibrate),
+  // toggling an iOS 18+ switch control produces the system haptic.
+  let hapticSwitch = null;
+  const haptic = () => {
+    if (navigator.vibrate && navigator.vibrate(8)) return;
+    if (!hapticSwitch) {
+      const label = document.createElement('label');
+      label.style.cssText = 'position:fixed;left:-99px;top:0;width:1px;height:1px;opacity:0;pointer-events:none';
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.setAttribute('switch', '');
+      label.appendChild(input);
+      document.body.appendChild(label);
+      hapticSwitch = label;
+    }
+    hapticSwitch.click();
+  };
+  if (layoutEdit) {
+    const st = document.createElement('style');
+    st.textContent = 'body{touch-action:none}' + MOVABLE.split(',').map((q) => q.trim() + '{outline:2px dashed rgba(41,41,191,.55);outline-offset:4px;cursor:move}').join('') +
+      '.lay-active{outline:3px solid #2929BF!important}' +
+      '.lay-guide{position:fixed;background:#ff2d78;z-index:99;pointer-events:none;display:none}' +
+      '.lay-handle{position:absolute;right:8px;bottom:8px;width:40px;height:40px;border-radius:8px;background:#fff;' +
+      'border:3px solid #2929BF;cursor:nwse-resize;z-index:9;box-shadow:0 1px 6px rgba(0,0,0,.35)}';
+    document.head.appendChild(st);
+    const gx = document.createElement('div'); gx.className = 'lay-guide'; gx.style.cssText += 'top:0;bottom:0;width:3px';
+    const gy = document.createElement('div'); gy.className = 'lay-guide'; gy.style.cssText += 'left:0;right:0;height:3px';
+    document.body.append(gx, gy);
+    guides = { gx, gy };
+    const box = document.querySelector('[data-media-box]');
+    if (box) {
+      if (getComputedStyle(box).position === 'static') box.style.position = 'relative';
+      const h = document.createElement('div');
+      h.className = 'lay-handle';
+      box.appendChild(h);
+    }
+  }
+  // Snap lines: canvas edges and centre, the common margins, every other element's edges/centre.
+  const snapLines = (self) => {
+    const xs = [0, W / 2, W], ys = [0, H / 2, H];
+    let minLeft = W;
+    for (const el of document.querySelectorAll(MOVABLE)) {
+      if (el === self || el.contains(self) || self.contains(el)) continue;
+      const r = el.getBoundingClientRect();
+      if (!r.width || !r.height) continue;
+      xs.push(r.left, r.left + r.width / 2, r.right);
+      ys.push(r.top, r.top + r.height / 2, r.bottom);
+      minLeft = Math.min(minLeft, r.left);
+    }
+    if (minLeft > 0 && minLeft < W / 2) xs.push(minLeft, W - minLeft);
+    return { xs, ys };
+  };
+  const nearest = (edges, lines) => {
+    let best = null;
+    for (const e of edges) for (const l of lines) {
+      const d = l - e;
+      if (Math.abs(d) <= SNAP && (!best || Math.abs(d) < Math.abs(best.d))) best = { d, line: l };
+    }
+    return best;
+  };
+  const showGuides = (sx, sy) => {
+    guides.gx.style.display = sx ? 'block' : 'none';
+    if (sx) guides.gx.style.left = Math.round(sx.line - 1) + 'px';
+    guides.gy.style.display = sy ? 'block' : 'none';
+    if (sy) guides.gy.style.top = Math.round(sy.line - 1) + 'px';
+  };
+
   let drag = null;   // sticker move
   let resize = null; // sticker resize
   let pan = null;    // background photo pan
@@ -105,6 +209,16 @@ export function slideRuntime({ toneThreshold = 0.62 } = {}) {
   // Applying a new focus moves both the object-position and the zoomed box offset,
   // mirroring how the template positions the box from the focus value.
   const panTarget = () => {
+    const boxed = document.querySelector('[data-media-box] img[data-media]:not(.bg)');
+    if (!document.querySelector('img[data-media].bg') && boxed && boxed.naturalWidth) {
+      // A photo inside a box: object-fit cover, panned by object-position only.
+      const box = boxed.getBoundingClientRect();
+      const s = Math.max(box.width / boxed.naturalWidth, box.height / boxed.naturalHeight);
+      const [px, py] = getComputedStyle(boxed).objectPosition.split(' ').map((v) => parseFloat(v) / 100);
+      return { img: boxed, boxed: true, boxW: box.width, boxH: box.height,
+        overX: boxed.naturalWidth * s - box.width, overY: boxed.naturalHeight * s - box.height,
+        px: (isFinite(px) ? px : 0.5) * 100, py: (isFinite(py) ? py : 0.5) * 100 };
+    }
     const img = document.querySelector('img[data-media].bg');
     if (!img || !img.naturalWidth) return null;
     const box = img.getBoundingClientRect();
@@ -114,12 +228,29 @@ export function slideRuntime({ toneThreshold = 0.62 } = {}) {
     return { img, boxW: box.width, boxH: box.height, overX: dw - W, overY: dh - H, px: px * 100, py: py * 100 };
   };
   const applyFocus = (t, nx, ny) => {
+    if (t.boxed) {
+      t.img.style.setProperty('object-position', nx + '% ' + ny + '%', 'important');
+      return;
+    }
     t.img.style.objectPosition = nx + '% ' + ny + '%';
     t.img.style.left = Math.round((W - t.boxW) * (nx / 100)) + 'px';
     t.img.style.top = Math.round((H - t.boxH) * (ny / 100)) + 'px';
   };
 
   document.addEventListener('pointerdown', (e) => {
+    if (layoutEdit) {
+      const resizing = e.target.closest('.lay-handle');
+      const el = resizing ? resizing.closest('[data-media-box]') : e.target.closest(MOVABLE);
+      if (!el) return;
+      e.preventDefault();
+      el.setPointerCapture?.(e.pointerId);
+      const r = el.getBoundingClientRect();
+      const [tx, ty] = offsetOf(el);
+      lay = { el, key: keyOf(el), resizing: Boolean(resizing), x0: e.clientX, y0: e.clientY, tx, ty,
+        r, w0: r.width, h0: r.height, lines: snapLines(el), snapKey: '' };
+      el.classList.add('lay-active');
+      return;
+    }
     const handle = e.target.closest('.st-handle');
     if (handle) {
       e.preventDefault();
@@ -146,6 +277,7 @@ export function slideRuntime({ toneThreshold = 0.62 } = {}) {
     }
     // Pan the photo (only when it overflows, i.e. cover-fit or zoomed).
     const t = panTarget();
+    if (t && t.boxed && !e.target.closest('[data-media-box]')) return;
     if (t && (t.overX > 1 || t.overY > 1)) {
       e.preventDefault();
       pan = { ...t, x0: e.clientX, y0: e.clientY };
@@ -154,6 +286,33 @@ export function slideRuntime({ toneThreshold = 0.62 } = {}) {
   });
 
   document.addEventListener('pointermove', (e) => {
+    if (lay) {
+      const dx = e.clientX - lay.x0, dy = e.clientY - lay.y0;
+      let sx = null, sy = null;
+      if (lay.resizing) {
+        sx = nearest([lay.r.right + dx], lay.lines.xs);
+        sy = nearest([lay.r.bottom + dy], lay.lines.ys);
+        lay.w = Math.max(120, Math.round(lay.w0 + dx + (sx ? sx.d : 0)));
+        lay.h = Math.max(120, Math.round(lay.h0 + dy + (sy ? sy.d : 0)));
+        lay.el.style.setProperty('width', lay.w + 'px', 'important');
+        lay.el.style.setProperty('height', lay.h + 'px', 'important');
+        lay.el.style.setProperty('right', 'auto', 'important');
+        lay.el.style.setProperty('bottom', 'auto', 'important');
+        lay.el.style.setProperty('flex', 'none', 'important');
+      } else {
+        const L = lay.r.left + dx, T = lay.r.top + dy;
+        sx = nearest([L, L + lay.r.width / 2, L + lay.r.width], lay.lines.xs);
+        sy = nearest([T, T + lay.r.height / 2, T + lay.r.height], lay.lines.ys);
+        lay.x = Math.round(lay.tx + dx + (sx ? sx.d : 0));
+        lay.y = Math.round(lay.ty + dy + (sy ? sy.d : 0));
+        setOffset(lay.el, lay.x, lay.y);
+      }
+      showGuides(sx, sy);
+      const snapKey = (sx ? 'x' + sx.line : '') + (sy ? 'y' + sy.line : '');
+      if (snapKey && snapKey !== lay.snapKey) haptic();
+      lay.snapKey = snapKey;
+      return;
+    }
     if (resize) {
       const d = Math.hypot(e.clientX - resize.cx, e.clientY - resize.cy);
       const k = d / resize.d0;
@@ -182,6 +341,16 @@ export function slideRuntime({ toneThreshold = 0.62 } = {}) {
   });
 
   document.addEventListener('pointerup', () => {
+    if (lay) {
+      lay.el.classList.remove('lay-active');
+      showGuides(null, null);
+      const msg = { type: 'layout-move', key: lay.key };
+      if (lay.x !== undefined) Object.assign(msg, { x: lay.x, y: lay.y });
+      if (lay.w !== undefined) Object.assign(msg, { w: lay.w, h: lay.h });
+      if (msg.x !== undefined || msg.w !== undefined) send(msg);
+      lay = null;
+      return;
+    }
     if (resize) {
       const { el, hasText, next, nextW } = resize;
       if (hasText && next) send({ type: 'sticker-resize', id: el.dataset.stickerId, fontSize: next });
