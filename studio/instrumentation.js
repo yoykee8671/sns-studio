@@ -14,7 +14,7 @@ export async function register() {
     const { readAccounts, saveAccount } = await import('./lib/ig-accounts.mjs');
     const { refreshToken } = await import('./lib/instagram.mjs');
     for (const [id, acc] of Object.entries(await readAccounts())) {
-      if (!acc.token || Date.now() - Date.parse(acc.refreshedAt ?? 0) < 7 * 86400000) continue;
+      if (!acc.token || /^EAA/.test(acc.token) || Date.now() - Date.parse(acc.refreshedAt ?? 0) < 7 * 86400000) continue;
       try {
         await saveAccount(id, { token: await refreshToken(acc.token), refreshedAt: new Date().toISOString() });
         console.log(`instagram token renewed: ${id}`);

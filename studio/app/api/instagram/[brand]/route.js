@@ -7,11 +7,12 @@ import { verifyToken } from '@/lib/instagram.mjs';
 export async function PUT(req, { params }) {
   const { brand: brandId } = await params;
   try {
-    await loadBrand(brandId);
+    const brand = await loadBrand(brandId);
     const { token } = await req.json();
-    const clean = String(token ?? '').trim();
+    // Copies often carry line breaks, quotes or an 'access_token=' prefix.
+    const clean = String(token ?? '').replace(/\s+/g, '').replace(/^access_token=/, '').replace(/^["']|["']$/g, '');
     if (clean.length < 20) return Response.json({ error: '토큰을 붙여넣어 주세요.' }, { status: 400 });
-    const { userId, username } = await verifyToken(clean).catch((e) => {
+    const { userId, username } = await verifyToken(clean, brand.handle).catch((e) => {
       throw new Error(`Instagram이 이 토큰을 받지 않았어요: ${e.message}`);
     });
     const now = new Date().toISOString();

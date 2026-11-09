@@ -1,12 +1,14 @@
 // Instagram API publishing: single image, carousel (images/videos mixed) or reel.
 // The API pulls media from public URLs, so slides are staged on this server first
 // (see public-media.mjs; PUBLIC_BASE_URL must be reachable from the internet).
-// Default host is the "Instagram API with Instagram Login" flavor (no Facebook Page
-// needed); set IG_GRAPH_HOST=graph.facebook.com for the Facebook-Login flavor.
+// Both token kinds work, told apart by their shape: Instagram-Login tokens (IG…) go to
+// graph.instagram.com; Facebook-Login / business portfolio tokens (EAA…, e.g. a system
+// user's) go to graph.facebook.com, where the same media endpoints exist.
 
-const GRAPH = `https://${process.env.IG_GRAPH_HOST ?? 'graph.instagram.com'}/${
-  process.env.META_GRAPH_VERSION ?? 'v26.0'
-}`;
+const VERSION = process.env.META_GRAPH_VERSION ?? 'v26.0';
+export const isFacebookToken = (token) => /^EAA/.test(token ?? '');
+const graphBase = (token) =>
+  `https://${isFacebookToken(token) ? 'graph.facebook.com' : process.env.IG_GRAPH_HOST ?? 'graph.instagram.com'}/${VERSION}`;
 
 import { credentials } from './ig-accounts.mjs';
 
@@ -24,7 +26,7 @@ export async function publishConfig(brand) {
 }
 
 async function graph(pathname, params, token, method = 'POST') {
-  const url = new URL(`${GRAPH}/${pathname}`);
+  const url = new URL(`${graphBase(token)}/${pathname}`);
   const body = new URLSearchParams({ ...params, access_token: token });
   const res =
     method === 'GET'
@@ -108,9 +110,22 @@ export const hasInstagram = async (brand) => Boolean(await credentials(brand));
  * Checks a token with Instagram and returns the account it belongs to
  * ({ userId, username }). Throws Instagram's own message when it is invalid.
  */
-export async function verifyToken(token) {
-  const me = await graph('me', { fields: 'user_id,username' }, token, 'GET');
-  return { userId: String(me.user_id ?? me.id ?? ''), username: me.username ?? '' };
+export async function verifyToken(token, handle) {
+  if (!isFacebookToken(token)) {
+    const me = await graph('me', { fields: 'user_id,username' }, token, 'GET');
+    return { userId: String(me.user_id ?? me.id ?? ''), username: me.username ?? '' };
+  }
+  // A Facebook token reaches Instagram through the Pages it manages: pick the linked
+  // Instagram account that matches this brand's handle (or the only one there is).
+  const { data = [] } = await graph('me/accounts', { fields: 'name,instagram_business_account{id,username}', limit: '100' }, token, 'GET');
+  const found = data.map((p) => p.instagram_business_account).filter(Boolean);
+  if (!found.length) {
+    throw new Error('이 토큰으로 볼 수 있는 Facebook 페이지에 연결된 Instagram 비즈니스 계정이 없어요. 토큰 권한(pages_show_list, instagram_basic, instagram_content_publish)과 페이지·Instagram 연결을 확인해 주세요.');
+  }
+  const want = String(handle ?? '').replace(/^@/, '').toLowerCase();
+  const ig = found.find((a) => a.username?.toLowerCase() === want) ?? (found.length === 1 ? found[0] : null);
+  if (!ig) throw new Error(`이 토큰에 연결된 계정(${found.map((a) => a.username).join(', ')}) 중에 ${want || '이 계정'}이 없어요.`);
+  return { userId: String(ig.id), username: ig.username ?? '' };
 }
 
 /**
@@ -118,6 +133,7 @@ export async function verifyToken(token) {
  * day old and not yet expired). Returns the new token.
  */
 export async function refreshToken(token) {
+  if (isFacebookToken(token)) return token; // Facebook tokens are not renewed this way
   const url = new URL(`https://${process.env.IG_GRAPH_HOST ?? 'graph.instagram.com'}/refresh_access_token`);
   url.search = new URLSearchParams({ grant_type: 'ig_refresh_token', access_token: token });
   const res = await fetch(url);
