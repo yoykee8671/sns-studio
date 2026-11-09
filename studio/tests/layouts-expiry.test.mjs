@@ -176,3 +176,19 @@ test('editing a built-in keeps one record per built-in, one slide of that templa
   assert.equal(layouts.withOverride({ title: 'kept' }, 'cover-minimal', overrides).title, 'kept');
   await layouts.deleteLayout(a.id);
 });
+
+test('템플릿 미리보기: saved text stays on the card and in the template editor, not in new posts', async () => {
+  const { createLayout, updateLayout, readLayout, listLayouts, layoutAsPost, overridesOf } = layouts;
+  const base = await createLayout({ builtin: 'cover-photo-full', brand: BRAND, override: true });
+  const edited = layoutAsPost(base, { withPreview: true });
+  edited.slides[0].title = '내가 쓴 제목';
+  await updateLayout(base.id, { post: edited });
+  const saved = await readLayout(base.id);
+  assert.equal(saved.slides[0].title, '');
+  assert.deepEqual(saved.preview, { title: '내가 쓴 제목' });
+  assert.equal(overridesOf(await listLayouts())['cover-photo-full'].preview.title, '내가 쓴 제목');
+  assert.equal(layoutAsPost(saved, { withPreview: true }).slides[0].title, '내가 쓴 제목');
+  assert.equal(layoutAsPost(saved).slides[0].title, '');
+  await updateLayout(base.id, { name: '새 이름' });
+  assert.equal((await readLayout(base.id)).preview.title, '내가 쓴 제목');
+});

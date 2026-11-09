@@ -8,7 +8,7 @@ export async function GET(_req, { params }) {
     const layout = await readLayout(id);
     const brandId = layout.brand ?? (await listBrands())[0]?.id;
     const brand = await loadBrand(brandId);
-    const post = layoutAsPost({ ...layout, brand: brandId });
+    const post = layoutAsPost({ ...layout, brand: brandId }, { withPreview: true });
     const [logoSvg, images, closing] = await Promise.all([
       loadLogoSvg(brand), imageStatus(brand, post), closingImage(brand),
     ]);
@@ -30,7 +30,7 @@ export async function PUT(req, { params }) {
       desc: desc ?? post?.layoutDesc,
     });
     const brand = await loadBrand(layout.brand);
-    const saved = layoutAsPost(layout);
+    const saved = layoutAsPost(layout, { withPreview: true });
     return Response.json({ layout, post: saved, images: await imageStatus(brand, saved) });
   } catch (err) {
     return Response.json({ error: err.message }, { status: err.code === 'ENOENT' ? 404 : 400 });

@@ -17,8 +17,9 @@ const SAMPLE_MEDIA =
       '</linearGradient></defs><rect width="100%" height="100%" fill="url(#g)"/></svg>',
   );
 
-function renderPreview(t, post, brand, logoSvg, design = {}) {
-  const slide = { ...t.meta.newSlide(post), ...design, ...(t.meta.sample ?? {}) };
+function renderPreview(t, post, brand, logoSvg, design = {}, text = null) {
+  // Sample text fills the card, unless the template was saved with text of its own.
+  const slide = { ...t.meta.newSlide(post), ...design, ...(t.meta.sample ?? {}), ...(text ?? {}) };
   // Photo-option templates show their photo look in the gallery.
   if (t.meta.options?.some((o) => o.key === 'photo')) slide.photo = 'show';
   const size = t.meta.sizeFor(post);
@@ -61,7 +62,7 @@ export default function TemplateGallery({
     const o = overrides[key];
     return {
       id: `builtin:${key}`, item: { kind: 'builtin', key }, label: o?.name || t.meta.label, edited: Boolean(o),
-      ...renderPreview(t, post, brand, logoSvg, o?.slide ? (({ template, ...d }) => d)(o.slide) : {}),
+      ...renderPreview(t, post, brand, logoSvg, o?.slide ? (({ template, ...d }) => d)(o.slide) : {}, o?.preview),
       on: key === current, hidden: hidden.includes(key),
       pick: manage ? null : () => onPick(key), ...extra,
     };
@@ -71,7 +72,7 @@ export default function TemplateGallery({
     return {
       id: `mine:${l.id}`, item: { kind: 'mine', layout: l },
       label: l.slides > 1 ? `${l.name} · ${l.slides}장` : l.name,
-      ...renderPreview(TEMPLATES[slide.template], post, brand, logoSvg, slide),
+      ...renderPreview(TEMPLATES[slide.template], post, brand, logoSvg, slide, l.preview),
       on: false,
       // Only one-slide templates apply to a single slide; bigger ones start new posts.
       pick: manage || !l.slide ? null : () => onPickMine(l),

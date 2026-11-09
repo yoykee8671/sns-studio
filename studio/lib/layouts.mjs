@@ -58,7 +58,22 @@ export function stripSlides(post) {
     });
 }
 
-function toLayout({ id, name, desc, brand, post, createdAt, builtinKey }) {
+/**
+ * The text written on the first slide, kept only for the template's preview card (the
+ * thumbnail shows what the user made); picking the template still applies design only.
+ */
+function previewText(slide, fallback) {
+  const t = TEMPLATES[slide?.template ?? fallback];
+  if (!t) return undefined;
+  const out = {};
+  for (const f of t.meta.fields) {
+    const v = slide[f.key];
+    if (typeof v === 'string' && v.trim()) out[f.key] = v.slice(0, 2000);
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+function toLayout({ id, name, desc, brand, post, createdAt, builtinKey, preview }) {
   if (builtinKey) {
     // A built-in's edited design: always exactly one slide of that very template.
     post = { ...post, template: builtinKey, slides: [{ ...(post.slides?.[0] ?? {}), template: builtinKey }] };
@@ -66,6 +81,7 @@ function toLayout({ id, name, desc, brand, post, createdAt, builtinKey }) {
   if (!TEMPLATES[post?.template]) throw new Error('unknown template');
   if (!Array.isArray(post.slides) || !post.slides.length) throw new Error('slides required');
   const now = new Date().toISOString();
+  const text = preview ?? previewText(post.slides[0], post.template);
   return {
     id,
     ...(builtinKey ? { builtinKey } : {}),
@@ -77,6 +93,7 @@ function toLayout({ id, name, desc, brand, post, createdAt, builtinKey }) {
     contentType: post.contentType ?? TEMPLATES[post.template].meta.contentType,
     template: post.template,
     slides: stripSlides(post),
+    ...(text ? { preview: text } : {}),
     createdAt: createdAt ?? now,
     updatedAt: now,
   };
@@ -107,6 +124,7 @@ export async function listLayouts() {
         slide: l.slides.length === 1 ? { ...l.slides[0], template: l.slides[0].template ?? l.template } : undefined,
         // First slide, for the preview card of any template (one slide or many).
         first: { ...l.slides[0], template: l.slides[0].template ?? l.template },
+        ...(l.preview ? { preview: l.preview } : {}),
         updatedAt: l.updatedAt,
       });
     } catch (e) {
@@ -153,6 +171,8 @@ export async function updateLayout(id, { name, desc, post }) {
     post: base,
     createdAt: prev.createdAt,
     builtinKey: prev.builtinKey,
+    // A rename keeps the card's text; a saved edit takes the text it now has.
+    preview: post ? undefined : prev.preview,
   }));
 }
 
@@ -160,8 +180,13 @@ export async function deleteLayout(id) {
   await rm(fileOf(id), { force: true });
 }
 
-/** The layout as a post-shaped object the editor (and createPost) can work with. */
-export function layoutAsPost(layout) {
+/**
+ * The layout as a post-shaped object the editor (and createPost) can work with.
+ * withPreview: the template editor reopens with the text shown on its card.
+ */
+export function layoutAsPost(layout, { withPreview = false } = {}) {
+  const slides = structuredClone(layout.slides);
+  if (withPreview && layout.preview && slides[0]) Object.assign(slides[0], layout.preview);
   return {
     id: layout.id,
     brand: layout.brand,
@@ -170,7 +195,7 @@ export function layoutAsPost(layout) {
     contentType: layout.contentType,
     template: layout.template,
     status: 'draft',
-    slides: structuredClone(layout.slides),
+    slides,
     caption: '',
     hashtags: [],
     layoutName: layout.name,
@@ -181,7 +206,8 @@ export function layoutAsPost(layout) {
 
 /** Edited built-ins: { [templateKey]: { id, name, slide } } from a listLayouts() result. */
 export const overridesOf = (list) =>
-  Object.fromEntries(list.filter((l) => l.builtinKey).map((l) => [l.builtinKey, { id: l.id, name: l.name, slide: l.first }]));
+  Object.fromEntries(list.filter((l) => l.builtinKey)
+    .map((l) => [l.builtinKey, { id: l.id, name: l.name, slide: l.first, preview: l.preview }]));
 
 /**
  * A new slide of a built-in template with its edited design (if any): the override's
