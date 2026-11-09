@@ -627,25 +627,22 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
    * only, up to the Instagram limit). Files upload one by one (each ≤ 100MB through the
    * tunnel) and the slides change in a single step once they are on the server.
    */
-  const uploadFiles = async (fileList) => {
-    const files = [...(fileList ?? [])];
-    if (!files.length) return;
+  // Where n new photos/videos go: the selected slide first (or, when it is the last page,
+  // new slides before it), then the following empty photo slides, then new slides before a
+  // trailing last-page slide (끝장 이미지, 팔로우 카드), up to the Instagram limit.
+  const lastRole = (p) => resolveTemplate(p, p.slides[p.slides.length - 1]).meta.role === 'last';
+  const planPlacement = (n) => {
     const multi = post.format !== 'single';
-    // New slides go in before a trailing last-page slide (끝장 이미지, 팔로우 카드).
-    const lastRole = (p) => resolveTemplate(p, p.slides[p.slides.length - 1]).meta.role === 'last';
     const tail = post.slides.length > 1 && lastRole(post) ? 1 : 0;
     const scanEnd = post.slides.length - tail;
     const selIsLast = resolveTemplate(post, post.slides[sel]).meta.role === 'last';
-    const plan = [files.length > 1 && selIsLast && multi ? { isNew: true } : { index: sel }];
+    const plan = [n > 1 && selIsLast && multi ? { isNew: true } : { index: sel }];
     let total = post.slides.length;
     if (plan[0].isNew) {
-      if (total >= maxSlides) {
-        notify(`장 수가 이미 ${maxSlides}장이라 더 추가할 수 없어요.`, 'error');
-        return;
-      }
+      if (total >= maxSlides) return { plan: [], skipped: n, tail, full: true };
       total++;
     }
-    for (let k = 1; k < files.length && multi; k++) {
+    for (let k = 1; k < n && multi; k++) {
       const prev = plan[plan.length - 1];
       let j = prev.isNew ? scanEnd : prev.index + 1;
       // Fill only empty photo slides — never a last-page slide (끝장 이미지, 팔로우 카드).
@@ -659,7 +656,60 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
         total++;
       } else break;
     }
-    const skipped = files.length - plan.length;
+    return { plan, skipped: n - plan.length, tail };
+  };
+  // Puts already-uploaded media on the planned slides. credit (e.g. '📷 @someone') fills
+  // an empty 출처 on those slides.
+  const placeMedia = (done, tail, credit = '') => {
+    update((p) => {
+      const key = photoTemplateKey(p, sel);
+      let insertAt = p.slides.length - (p.slides.length > 1 && lastRole(p) ? 1 : 0);
+      for (const d of done) {
+        let index = d.index;
+        if (d.isNew) {
+          const s = TEMPLATES[key].meta.newSlide(p);
+          if (key !== p.template) s.template = key;
+          p.slides.splice(insertAt, 0, s);
+          index = insertAt++;
+        } else if (index >= p.slides.length) continue;
+        const slide = p.slides[index];
+        Object.assign(slide, d.fields);
+        delete slide.image;
+        Object.assign(slide, photoPatch(resolveTemplate(p, slide).meta, slide));
+        if (credit) {
+          if (!String(slide.source ?? '').replace(/^출처\s*\|\s*/, '').trim()) slide.source = credit;
+          if (!String(slide.credit ?? '').trim()) slide.credit = credit;
+        }
+      }
+    });
+    setImages((im) => {
+      const next = [...im];
+      let insertAt = next.length - tail;
+      for (const d of done) {
+        if (d.isNew) next.splice(insertAt++, 0, { state: 'ok', sha: d.fields.imageSha256 });
+        else if (d.index < next.length) next[d.index] = { state: 'ok', sha: d.fields.imageSha256 };
+      }
+      return next;
+    });
+    setReports({});
+  };
+  const placedNote = (done, skipped, verb) => {
+    const added = done.filter((d) => d.isNew).length;
+    return done.length === 1
+      ? `${done[0].fields.mediaType === 'video' ? '영상' : '사진'}을 ${verb}. 저장을 눌러야 게시물에 남아요.`
+      : `${done.length}개를 ${verb}${added ? ` (새 장 ${added}개 추가)` : ''}.` +
+          `${skipped > 0 ? ` 장 수 제한으로 ${skipped}개는 빠졌어요.` : ''} 저장을 눌러야 남아요.`;
+  };
+
+  /**
+   * Uploads one or many photos/videos (one by one, each ≤ 100MB through the tunnel), then
+   * places them with planPlacement/placeMedia in a single step.
+   */
+  const uploadFiles = async (fileList) => {
+    const files = [...(fileList ?? [])];
+    if (!files.length) return;
+    const { plan, skipped, tail, full } = planPlacement(files.length);
+    if (full) return notify(`장 수가 이미 ${maxSlides}장이라 더 추가할 수 없어요.`, 'error');
     setBusy('upload');
     const done = [];
     try {
@@ -679,42 +729,49 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
       setUploadNote(null);
     }
     if (!done.length) return;
-    // Slides can't be moved, added or deleted while busy, so the planned indices still hold;
-    // new slides are inserted at the end of the content, before the trailing last page.
-    update((p) => {
-      const key = photoTemplateKey(p, sel);
-      let insertAt = p.slides.length - (p.slides.length > 1 && lastRole(p) ? 1 : 0);
-      for (const d of done) {
-        let index = d.index;
-        if (d.isNew) {
-          const s = TEMPLATES[key].meta.newSlide(p);
-          if (key !== p.template) s.template = key;
-          p.slides.splice(insertAt, 0, s);
-          index = insertAt++;
-        } else if (index >= p.slides.length) continue;
-        const slide = p.slides[index];
-        Object.assign(slide, d.fields);
-        delete slide.image;
-        Object.assign(slide, photoPatch(resolveTemplate(p, slide).meta, slide));
+    placeMedia(done, tail);
+    notify(placedNote(done, skipped, '올렸어요'));
+  };
+
+  /**
+   * 인스타 링크로 가져오기 on a slide: the server downloads the post's video(s)/photos
+   * straight into this post (nothing passes through the phone) and they are placed like
+   * an upload — this slide first; a carousel link fills the next slides. The original
+   * account goes into the slides' 출처, and into the post's 출처·허락 when that is empty.
+   */
+  const importLink = async (url) => {
+    const link = String(url ?? '').trim();
+    if (!link) return;
+    setBusy('upload');
+    setUploadNote('가져오는 중…');
+    try {
+      const res = await fetch(`${apiBase}/media/from-url`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: link }),
+      });
+      if (!res.ok) throw new Error(await errorOf(res));
+      const got = await res.json();
+      const { plan, skipped, tail, full } = planPlacement(got.items.length);
+      if (full) throw new Error(`장 수가 이미 ${maxSlides}장이라 더 추가할 수 없어요.`);
+      const done = plan.map((pl, k) => ({ ...pl, fields: got.items[k] }));
+      placeMedia(done, tail, got.handle ? `📷 @${got.handle}` : '');
+      if (got.handle && !post.source?.url && !post.source?.handle) {
+        update((p) => {
+          p.source = { url: got.url, handle: got.handle, permission: 'none', dm: '', note: '', ...(p.source ?? {}) };
+          p.source.url ||= got.url;
+          p.source.handle ||= got.handle;
+        });
       }
-    });
-    setImages((im) => {
-      const next = [...im];
-      let insertAt = next.length - tail;
-      for (const d of done) {
-        if (d.isNew) next.splice(insertAt++, 0, { state: 'ok', sha: d.fields.imageSha256 });
-        else if (d.index < next.length) next[d.index] = { state: 'ok', sha: d.fields.imageSha256 };
-      }
-      return next;
-    });
-    setReports({});
-    const added = done.filter((d) => d.isNew).length;
-    notify(
-      done.length === 1
-        ? `${done[0].fields.mediaType === 'video' ? '영상' : '사진'}을 올렸어요. 저장을 눌러야 게시물에 남아요.`
-        : `${done.length}개를 올렸어요${added ? ` (새 장 ${added}개 추가)` : ''}.` +
-            `${skipped > 0 ? ` 장 수 제한으로 ${skipped}개는 빠졌어요.` : ''} 저장을 눌러야 남아요.`,
-    );
+      notify(placedNote(done, skipped, '가져왔어요'));
+      return true;
+    } catch (e) {
+      notify(`가져오기 실패: ${e.message}`, 'error');
+      return false;
+    } finally {
+      setBusy(null);
+      setUploadNote(null);
+    }
   };
   // templateKey undefined = inherit the previous slide's template so a chosen layout continues.
   // New slides go before a trailing last-page slide (끝장 이미지, 팔로우 카드).
@@ -1319,6 +1376,7 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
                   busy={busy === 'upload'}
                   progress={uploadNote}
                   onUpload={uploadFiles}
+                  onImportLink={importLink}
                   onPin={() => updateSlide(sel, { imageSha256: images[sel].sha })}
                   onZoom={(z) => updateSlide(sel, { zoom: z === 1 ? undefined : z })}
                 />
@@ -2077,7 +2135,21 @@ function AdjustPanel({ fields, sliders, slide, brand, onSlider, onTextStyle }) {
   );
 }
 
-function MediaRow({ slide, status, accept, multiple, busy, progress, onUpload, onPin, onZoom }) {
+function MediaRow({ slide, status, accept, multiple, busy, progress, onUpload, onImportLink, onPin, onZoom }) {
+  const [link, setLink] = useState('');
+  const go = async (value) => {
+    if (await onImportLink(value)) setLink('');
+  };
+  // Phone: one tap reads the copied Instagram link and imports it.
+  const pasteAndGo = async () => {
+    try {
+      const text = (await navigator.clipboard.readText()).trim();
+      setLink(text);
+      if (/instagram\.com\//.test(text)) go(text);
+    } catch {
+      // clipboard blocked: the field stays for a manual paste
+    }
+  };
   const [label, tone] = IMAGE_STATE[status?.state] ?? ['확인 중', 'warn'];
   const name = (slide.media ?? slide.image)?.split('/').pop();
   const isImage = name && !isVideoPath(slide.media ?? slide.image);
@@ -2108,6 +2180,24 @@ function MediaRow({ slide, status, accept, multiple, busy, progress, onUpload, o
       </label>
       {multiple && !busy && (
         <p className="note">여러 개를 고르면 이 장부터 차례로 채우고, 모자라면 장을 새로 만들어요.</p>
+      )}
+      {onImportLink && (
+        <div className="link-import">
+          <input
+            className="text-input"
+            inputMode="url"
+            placeholder="인스타 게시물·릴스 링크"
+            value={link}
+            disabled={busy}
+            onChange={(e) => setLink(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && link.trim() && go(link)}
+          />
+          {link.trim() ? (
+            <button disabled={busy} onClick={() => go(link)}>{busy ? '가져오는 중…' : '가져오기'}</button>
+          ) : (
+            <button disabled={busy} onClick={pasteAndGo}>붙여넣기</button>
+          )}
+        </div>
       )}
       {isImage && (
         <>

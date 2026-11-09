@@ -552,6 +552,9 @@ button.tool-dark.on { background: #1d1d1f; border-color: #1d1d1f; box-shadow: in
 .adj-foot { display: flex; align-items: center; justify-content: space-between; font-size: 13px; color: var(--muted); }
 .adj-value b { color: var(--ink); font-weight: 700; font-variant-numeric: tabular-nums; margin-left: 4px; }
 
+.link-import { display: flex; gap: 8px; }
+.link-import .text-input { flex: 1; min-width: 0; padding: 8px 12px; font-size: 14px; }
+
 /* 세부 조정 › 색 */
 .color-picker { display: grid; gap: 14px; }
 .swatches { display: flex; gap: 10px; overflow-x: auto; padding: 2px; }
