@@ -192,3 +192,38 @@ test('템플릿 미리보기: saved text stays on the card and in the template e
   await updateLayout(base.id, { name: '새 이름' });
   assert.equal((await readLayout(base.id)).preview.title, '내가 쓴 제목');
 });
+
+test('예약 발행: due bookings publish once, failures are kept, restarts never double-post', async () => {
+  const { runDueSchedules, recoverInterrupted, checkScheduleTime } = await import('../lib/publish-post.mjs');
+  const mk = async (slug, schedule) => {
+    const p = await store.createPost({ brand: BRAND, slug, template: 'editorial-photo', format: 'carousel',
+      contentType: 'knowledge', slides: [{ headline: 'h', stickers: [] }] });
+    return store.savePost(BRAND, p.id, { ...p, schedule });
+  };
+  const now = Date.now();
+  const due = await mk('due', { at: new Date(now - 1000).toISOString(), state: 'scheduled' });
+  const later = await mk('later', { at: new Date(now + 3600e3).toISOString(), state: 'scheduled' });
+  const bad = await mk('bad', { at: new Date(now - 1000).toISOString(), state: 'scheduled' });
+  const calls = [];
+  const publishFn = async (brand, id) => {
+    calls.push(id);
+    if (id === bad.id) throw new Error('토큰 만료');
+    const cur = await store.readPost(brand, id);
+    const { schedule, ...rest } = cur;
+    await store.savePost(brand, id, { ...rest, status: 'published', instagram: { mediaId: '1' } });
+  };
+  await runDueSchedules(now, { publishFn });
+  assert.deepEqual(calls.sort(), [bad.id, due.id].sort());
+  assert.equal((await store.readPost(BRAND, due.id)).status, 'published');
+  assert.equal((await store.readPost(BRAND, later.id)).schedule.state, 'scheduled');
+  const failed = (await store.readPost(BRAND, bad.id)).schedule;
+  assert.equal(failed.state, 'failed');
+  assert.equal(failed.error, '토큰 만료');
+  await runDueSchedules(now + 10, { publishFn });
+  assert.equal(calls.length, 2, 'nothing is retried or published twice');
+  const stuck = await mk('stuck', { at: new Date(now - 1000).toISOString(), state: 'publishing' });
+  await recoverInterrupted();
+  assert.equal((await store.readPost(BRAND, stuck.id)).schedule.state, 'failed');
+  assert.ok(checkScheduleTime(new Date(now + 10e3).toISOString(), now));
+  assert.equal(checkScheduleTime(new Date(now + 3600e3).toISOString(), now), null);
+});

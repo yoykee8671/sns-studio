@@ -50,6 +50,16 @@ export async function PUT(req, { params }) {
     post.mediaPurged = true;
     post.purgedFiles = existing.purgedFiles;
   }
+  // 예약 is changed only through /schedule, and a post the server already published
+  // (예약 발행) stays published even if this editor still shows it as a draft.
+  delete post.schedule;
+  if (existing?.schedule) post.schedule = existing.schedule;
+  // Marked as published by hand (올린 곳이 따로 있음): a pending 예약 is dropped.
+  if (post.status === 'published' && post.schedule?.state !== 'publishing') delete post.schedule;
+  if (existing?.status === 'published' && post.status !== 'published' && existing.instagram) {
+    Object.assign(post, { status: 'published', publishedAt: existing.publishedAt, instagram: existing.instagram });
+    if (existing.scheduledFor) post.scheduledFor = existing.scheduledFor;
+  }
   const saved = await savePost(brandId, id, post);
   const images = await imageStatus(await loadBrand(brandId), saved);
   return Response.json({ post: saved, images });

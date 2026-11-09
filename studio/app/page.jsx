@@ -113,6 +113,9 @@ export default async function Home({ searchParams }) {
                 {p.series && <span className="badge badge-series">{String(p.series.no).padStart(3, '0')}호</span>}{' '}
                 {FORMAT[p.format] ?? p.format} {p.slides}장 ·{' '}
                 <span className={`badge badge-${p.status}`}>{STATUS[p.status] ?? p.status}</span>
+                {p.schedule?.state === 'scheduled' && <> <span className="badge badge-scheduled">예약 {fmtDate(p.schedule.at)}</span></>}
+                {p.schedule?.state === 'publishing' && <> <span className="badge badge-scheduled">예약 발행 중</span></>}
+                {p.schedule?.state === 'failed' && <> <span className="badge badge-failed">예약 발행 실패</span></>}
               </span>
               <span className="post-dates">
                 최종 저장 {fmtDate(p.updatedAt)}

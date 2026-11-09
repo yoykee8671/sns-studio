@@ -43,4 +43,20 @@ export async function register() {
     }
   }, 45_000);
   setInterval(run, 60 * 60 * 1000).unref?.();
+  // 예약 발행: check every minute for posts whose booked time has come.
+  const { runDueSchedules, recoverInterrupted } = await import('./lib/publish-post.mjs');
+  await recoverInterrupted().catch((e) => console.warn(`schedule recovery: ${e.message}`));
+  let ticking = false;
+  setInterval(async () => {
+    if (ticking) return;
+    ticking = true;
+    try {
+      const done = await runDueSchedules();
+      if (done.length) console.log(`scheduled publish: ${done.join(', ')}`);
+    } catch (e) {
+      console.warn(`scheduled publish check failed: ${e.message}`);
+    } finally {
+      ticking = false;
+    }
+  }, 60_000).unref?.();
 }

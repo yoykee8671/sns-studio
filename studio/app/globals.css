@@ -446,6 +446,15 @@ button.danger { color: var(--error); }
   background: #fbf0dc; color: #7a5212; border-bottom: 1px solid #efd9ad;
   padding: 9px 20px; font-size: 13px;
 }
+.banner-error { background: #fdecec; color: #9b1c1c; border-bottom-color: #f5c6c6; }
+.banner-info { background: #eef0fb; color: #23237a; border-bottom-color: #d6d9f4; }
+.banner .link { font-size: inherit; }
+.schedule-pick { display: grid; gap: 6px; margin: 12px 0 4px; }
+.schedule-pick label { font-weight: 600; font-size: 14px; }
+.schedule-pick input { font: inherit; padding: 9px 12px; border: 1px solid var(--line); border-radius: 10px; min-height: 42px; }
+.schedule-pick small { color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+.badge-scheduled { background: #eef0fb; border-color: transparent; color: #2929BF; }
+.badge-failed { background: #fdecec; border-color: transparent; color: #9b1c1c; }
 .slide-tools { display: flex; gap: 6px; flex-wrap: wrap; }
 .slide-tools button { padding: 5px 12px; min-height: 32px; font-size: 12px; }
 .slide-tools button.danger { margin-left: auto; color: var(--error); }

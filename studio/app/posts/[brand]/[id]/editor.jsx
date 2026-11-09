@@ -16,6 +16,22 @@ const THUMB_W = 60;
 const PRESET_KEY = 'sns-studio-sticker-presets';
 const STATUS = { draft: '작성 중', approved: '승인', published: '발행됨' };
 const FORMAT_LABEL = { carousel: '캐러셀', single: '단일 피드', reel: '릴스' };
+
+// 예약 발행 times: shown in Korea time; the picker works in the browser's local time.
+const SCHED_FMT = new Intl.DateTimeFormat('ko-KR', {
+  timeZone: 'Asia/Seoul', month: 'numeric', day: 'numeric', weekday: 'short',
+  hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+});
+const fmtSchedule = (iso) => SCHED_FMT.format(new Date(iso));
+const toLocalInput = (d) => {
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+};
+const defaultScheduleAt = () => {
+  const d = new Date(Date.now() + 2 * 3600000);
+  d.setMinutes(0, 0, 0);
+  return toLocalInput(d);
+};
 const PERMISSION = [
   ['none', '요청 전'],
   ['requested', '요청함'],
@@ -140,6 +156,7 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
   const [busy, setBusy] = useState(null);
   const [toast, setToast] = useState(null);
   const [modal, setModal] = useState(null);
+  const [schedAt, setSchedAt] = useState(''); // 예약 발행 picker value (local time)
   const [tab, setTab] = useState('slide');
   const [format, setFormat] = useState('png');
   // Phones save to the photo library: JPG keeps photos small (PNG stays one tap away in ⋯).
@@ -606,6 +623,66 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
     }
   };
 
+  // 예약 발행: saves the post and books the time; the server publishes the saved post then.
+  const doSchedule = async () => {
+    const at = new Date(schedAt);
+    if (!schedAt || Number.isNaN(at.getTime())) return notify('예약할 날짜와 시각을 골라주세요.', 'error');
+    setModal(null);
+    setBusy('schedule');
+    try {
+      const res = await fetch(`${apiBase}/schedule`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ post, at: at.toISOString() }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error);
+      setPost(d.post);
+      setDirty(false);
+      notify(`${fmtSchedule(d.post.schedule.at)}에 발행하도록 예약했어요.`);
+    } catch (e) {
+      notify(`예약 실패: ${e.message}`, 'error');
+    } finally {
+      setBusy(null);
+    }
+  };
+  const cancelSchedule = async () => {
+    setModal(null);
+    setBusy('schedule');
+    try {
+      const res = await fetch(`${apiBase}/schedule`, { method: 'DELETE' });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error);
+      // Keep any unsaved edits on screen; only the booking goes.
+      setPost((p) => {
+        const next = { ...p };
+        delete next.schedule;
+        return next;
+      });
+      notify('예약을 취소했어요. 게시물은 그대로 남아 있어요.');
+    } catch (e) {
+      notify(`예약 취소 실패: ${e.message}`, 'error');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // While a booking is due, pick up the server's result (published / failed) on its own.
+  useEffect(() => {
+    const s = post?.schedule;
+    if (!s || !['scheduled', 'publishing'].includes(s.state)) return undefined;
+    const tick = async () => {
+      if (Date.now() < Date.parse(s.at) - 5000) return;
+      const d = await fetch(apiBase).then((r) => r.json()).catch(() => null);
+      const fresh = d?.post;
+      if (!fresh || (fresh.status === post.status && fresh.schedule?.state === s.state)) return;
+      setPost((p) => ({ ...p, status: fresh.status, publishedAt: fresh.publishedAt, instagram: fresh.instagram, schedule: fresh.schedule }));
+      if (fresh.status === 'published') notify('예약한 게시물이 Instagram에 올라갔어요.');
+    };
+    const t = setInterval(tick, 20000);
+    return () => clearInterval(t);
+  }, [apiBase, post?.schedule?.at, post?.schedule?.state, post?.status]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const maxSlides = 10; // Instagram carousels take up to 10 items
 
   const usesMediaAt = (p, i) => {
@@ -1039,6 +1116,20 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
   const allIssues = Object.entries(reports).flatMap(([i, r]) => r.issues.map((t) => `${+i + 1}장: ${t}`));
   const hashtags = post.hashtags ?? [];
   const blocked = !isLayout && needsPermission(post);
+  const sched = post.status === 'published' ? null : post.schedule;
+  const openPublish = () => {
+    if (!ctx.publish.ready) return setModal({ kind: 'setup' });
+    setSchedAt(sched?.at && sched.state === 'scheduled' ? toLocalInput(new Date(sched.at)) : defaultScheduleAt());
+    setModal({ kind: sched?.state === 'scheduled' ? 'scheduled' : 'confirm' });
+  };
+  const publishLabel =
+    busy === 'publish' ? '발행 중…'
+      : busy === 'schedule' ? '예약 처리 중…'
+        : post.status === 'published' ? '발행 완료'
+          : sched?.state === 'publishing' ? '예약 발행 중…'
+            : sched?.state === 'scheduled' ? `예약 ${fmtSchedule(sched.at)}`
+              : '발행하기';
+  const publishDisabled = !!busy || blocked || post.status === 'published' || sched?.state === 'publishing';
   const thumbScale = THUMB_W / size.width;
   const title = isLayout
     ? post.layoutName
@@ -1130,12 +1221,8 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
           <button onClick={() => exportAs('svg')} disabled={!!busy || blocked}>
             {busy === 'svg' ? '만드는 중…' : 'Figma로 수정'}
           </button>
-          <button
-            className="primary"
-            disabled={!!busy || blocked || post.status === 'published'}
-            onClick={() => setModal({ kind: ctx.publish.ready ? 'confirm' : 'setup' })}
-          >
-            {busy === 'publish' ? '발행 중…' : post.status === 'published' ? '발행 완료' : '발행하기'}
+          <button className="primary" disabled={publishDisabled} onClick={openPublish}>
+            {publishLabel}
           </button>
           </>
           )}
@@ -1145,6 +1232,18 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
       {blocked && !isLayout && (
         <div className="banner">
           원작자 허락 전이라 내려받기·발행이 잠겨 있어요. <button className="link" onClick={() => setTab('source')}>출처·허락 탭</button>에서 허락 상태를 바꿔주세요.
+        </div>
+      )}
+
+      {!isLayout && sched?.state === 'failed' && (
+        <div className="banner banner-error">
+          예약 발행이 안 됐어요: {sched.error} <button className="link" onClick={openPublish}>다시 예약하거나 바로 발행</button>
+        </div>
+      )}
+      {!isLayout && sched?.state === 'scheduled' && (
+        <div className="banner banner-info">
+          <b>{fmtSchedule(sched.at)}</b>에 발행 예약됨 · 그때 <b>저장된 내용</b>이 올라가요{dirty ? ' — 고친 내용이 있으니 임시 저장해 주세요' : ''}.{' '}
+          <button className="link" onClick={openPublish}>예약 변경·취소</button>
         </div>
       )}
 
@@ -1563,12 +1662,8 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
             <button onClick={() => exportAs(format)} disabled={!!busy || blocked}>
               {busy === format ? '만드는 중…' : '내려받기'}
             </button>
-            <button
-              className="primary"
-              disabled={!!busy || blocked || post.status === 'published'}
-              onClick={() => setModal({ kind: ctx.publish.ready ? 'confirm' : 'setup' })}
-            >
-              {busy === 'publish' ? '발행 중…' : post.status === 'published' ? '발행 완료' : '발행하기'}
+            <button className="primary" disabled={publishDisabled} onClick={openPublish}>
+              {publishLabel}
             </button>
           </>
         )}
@@ -1733,7 +1828,7 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
             )}
             {modal.kind === 'confirm' && (
               <>
-                <h2>@{brandId}에 바로 발행할까요?</h2>
+                <h2>@{brandId}에 발행할까요?</h2>
                 <p>
                   {FORMAT_LABEL[post.format]} {post.slides.length}장과 캡션이
                   지금 상태 그대로 올라가요. 발행 후에는 이 앱에서 되돌릴 수 없어요.
@@ -1744,9 +1839,55 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
                     <ul>{allIssues.map((t) => <li key={t}>{t}</li>)}</ul>
                   </div>
                 )}
+                <div className="schedule-pick">
+                  <label htmlFor="sched-at">예약 발행</label>
+                  <input
+                    id="sched-at"
+                    type="datetime-local"
+                    value={schedAt}
+                    min={toLocalInput(new Date(Date.now() + 120000))}
+                    onChange={(e) => setSchedAt(e.target.value)}
+                  />
+                  <small>예약하면 그 시각에 이 서버가 저장된 내용 그대로 올려요. 그 전까지 고치거나 취소할 수 있어요.</small>
+                </div>
                 <div className="modal-actions">
                   <button onClick={() => setModal(null)}>취소</button>
-                  <button className="primary" onClick={doPublish}>발행하기</button>
+                  <button onClick={doSchedule}>예약하기</button>
+                  <button className="primary" onClick={doPublish}>바로 발행</button>
+                </div>
+              </>
+            )}
+            {modal.kind === 'scheduled' && sched && (
+              <>
+                <h2>{fmtSchedule(sched.at)} 발행 예약</h2>
+                <p>
+                  그 시각에 <b>저장된 내용</b> 그대로 @{brandId}에 올라가요. 그 전까지 자유롭게 고치고
+                  임시 저장하면 돼요.
+                </p>
+                <div className="schedule-pick">
+                  <label htmlFor="sched-at">시각 바꾸기</label>
+                  <input
+                    id="sched-at"
+                    type="datetime-local"
+                    value={schedAt}
+                    min={toLocalInput(new Date(Date.now() + 120000))}
+                    onChange={(e) => setSchedAt(e.target.value)}
+                  />
+                </div>
+                <div className="modal-actions">
+                  <button className="modal-danger" onClick={cancelSchedule}>예약 취소</button>
+                  <button onClick={doSchedule}>예약 변경</button>
+                  <button className="primary" onClick={() => setModal({ kind: 'confirmNow' })}>지금 바로 발행</button>
+                </div>
+              </>
+            )}
+            {modal.kind === 'confirmNow' && (
+              <>
+                <h2>예약 대신 지금 발행할까요?</h2>
+                <p>예약은 없어지고 지금 상태 그대로 바로 올라가요. 발행 후에는 이 앱에서 되돌릴 수 없어요.</p>
+                <div className="modal-actions">
+                  <button onClick={() => setModal({ kind: 'scheduled' })}>돌아가기</button>
+                  <button className="primary" onClick={doPublish}>바로 발행</button>
                 </div>
               </>
             )}

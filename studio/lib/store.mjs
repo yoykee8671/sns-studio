@@ -515,6 +515,7 @@ export async function listPosts() {
           publishedAt: post.status === 'published' ? (post.publishedAt ?? null) : null,
           mediaPurged: Boolean(post.mediaPurged),
           mediaExpiresAt: mediaExpiresAt(post),
+          schedule: post.status !== 'published' && post.schedule ? post.schedule : null,
         });
       } catch {
         // not a post folder
