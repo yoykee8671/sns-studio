@@ -509,6 +509,11 @@ button.tool-dark.on { background: #1d1d1f; border-color: #1d1d1f; box-shadow: in
 }
 .account-tab.on .count { background: var(--ink); color: #fff; }
 
+.ig-row { display: grid; gap: 8px; margin: 4px 0 12px; }
+.ig-status { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ig-connect { display: grid; gap: 8px; }
+.ig-connect-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.ig-connect-row .text-input { flex: 1; min-width: 200px; }
 .avatar-row { display: flex; gap: 14px; align-items: center; margin: 4px 0 14px; }
 .avatar-preview {
   width: 64px; height: 64px; flex: none; border-radius: 50%; overflow: hidden; background: var(--bg);

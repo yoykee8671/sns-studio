@@ -71,11 +71,12 @@ export default function BrandStyleSection({ data, embedded = false }) {
         <div className="series-body">
           <p className="note">색과 글꼴을 한 번 정하면 그 계정의 모든 카드에 입혀요. 비워두면 브랜드 기본값.</p>
           {error && <p className="form-error">{error}</p>}
-          {data.map(({ brand, handle, effective, avatarSrc, igReady }) => {
+          {data.map(({ brand, handle, effective, avatarSrc, igReady, igUser }) => {
             const t = drafts[brand] ?? {};
             return (
               <div className="series-brand" key={brand}>
                 <h3>{handle}</h3>
+                <InstagramRow brand={brand} connected={igReady} username={igUser} onError={setError} onDone={() => router.refresh()} />
                 <AvatarRow brand={brand} src={avatarSrc} igReady={igReady} onError={setError} onDone={() => router.refresh()} />
                 <div className="style-grid">
                   {[
@@ -181,6 +182,82 @@ function AvatarRow({ brand, src, igReady, onError, onDone }) {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Instagram 연결 — paste the account's access token; the server checks it with Instagram
+ * and keeps it (never shown again). Needed for 바로 발행 and profile-photo import.
+ */
+function InstagramRow({ brand, connected, username, onError, onDone }) {
+  const [open, setOpen] = useState(false);
+  const [token, setToken] = useState('');
+  const [busy, setBusy] = useState(false);
+  const call = async (init) => {
+    setBusy(true);
+    onError(null);
+    try {
+      const res = await fetch(`/api/instagram/${brand}`, init);
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error ?? `요청 실패 (${res.status})`);
+      setToken('');
+      setOpen(false);
+      onDone();
+    } catch (e) {
+      onError(`${brand} Instagram 연결: ${e.message}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="ig-row">
+      <div className="ig-status">
+        <strong>Instagram 연결</strong>
+        <span className={`pill ${connected ? 'pill-ok' : 'pill-warn'}`}>
+          {connected ? `연결됨${username ? ` · @${username}` : ''}` : '연결 안 됨'}
+        </span>
+        <button onClick={() => setOpen((v) => !v)}>{connected ? '다시 연결' : '연결하기'}</button>
+        {connected && (
+          <button className="btn-plain topbar-danger" disabled={busy} onClick={() => call({ method: 'DELETE' })}>연결 끊기</button>
+        )}
+      </div>
+      {open && (
+        <div className="ig-connect">
+          <div className="ig-connect-row">
+            <input
+              className="text-input"
+              type="password"
+              autoComplete="off"
+              placeholder="액세스 토큰 붙여넣기"
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+            />
+            <button
+              className="primary"
+              disabled={busy || token.trim().length < 20}
+              onClick={() => call({ method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token }) })}
+            >
+              {busy ? '확인 중…' : '확인하고 저장'}
+            </button>
+          </div>
+          <details className="setup-guide">
+            <summary>토큰 받는 방법</summary>
+            <ol>
+              <li>Instagram 앱에서 이 계정을 <b>프로페셔널(비즈니스·크리에이터)</b> 계정으로 바꿔 둬요.</li>
+              <li>
+                <a href="https://developers.facebook.com/apps" target="_blank" rel="noreferrer">developers.facebook.com/apps</a>
+                → 앱 만들기 → 사용 사례 <b>&lsquo;Instagram에서 메시지 및 콘텐츠 관리&rsquo;</b> 선택.
+              </li>
+              <li>
+                앱 화면의 <b>Instagram → API 설정(Instagram 로그인)</b> → &lsquo;액세스 토큰 생성&rsquo;에서 <b>계정 추가</b> →
+                이 계정으로 로그인·허용 → <b>토큰 생성</b>을 눌러 나온 긴 토큰을 복사해요.
+              </li>
+              <li>여기에 붙여넣고 &lsquo;확인하고 저장&rsquo;. 토큰은 서버에만 저장되고 다시 보이지 않아요. 60일 기한은 서버가 자동으로 연장해요.</li>
+            </ol>
+          </details>
+        </div>
+      )}
     </div>
   );
 }

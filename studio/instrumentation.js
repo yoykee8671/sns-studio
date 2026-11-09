@@ -9,6 +9,22 @@ export async function register() {
       .then((ids) => ids.length && console.log(`media expiry: purged ${ids.join(', ')}`))
       .catch((e) => console.warn(`media expiry failed: ${e.message}`));
   setTimeout(run, 30_000); // shortly after boot, then hourly
+  // Instagram tokens connected in the app last 60 days: extend them weekly (checked daily).
+  const renew = async () => {
+    const { readAccounts, saveAccount } = await import('./lib/ig-accounts.mjs');
+    const { refreshToken } = await import('./lib/instagram.mjs');
+    for (const [id, acc] of Object.entries(await readAccounts())) {
+      if (!acc.token || Date.now() - Date.parse(acc.refreshedAt ?? 0) < 7 * 86400000) continue;
+      try {
+        await saveAccount(id, { token: await refreshToken(acc.token), refreshedAt: new Date().toISOString() });
+        console.log(`instagram token renewed: ${id}`);
+      } catch (e) {
+        console.warn(`instagram token renew ${id}: ${e.message}`);
+      }
+    }
+  };
+  setTimeout(renew, 60_000);
+  setInterval(renew, 24 * 60 * 60 * 1000).unref?.();
   // Profile photos (팔로우 카드): fetch from Instagram once for accounts that have a
   // token but no photo yet. Uploading or re-fetching later is done from the home page.
   setTimeout(async () => {
@@ -17,7 +33,7 @@ export async function register() {
     for (const { id } of await listBrands()) {
       try {
         const brand = await loadBrand(id);
-        if (brand.avatarFile || !hasInstagram(brand)) continue;
+        if (brand.avatarFile || !(await hasInstagram(brand))) continue;
         const { data, ext } = await fetchProfilePicture(brand);
         await saveBrandAvatar(id, data, ext);
         console.log(`profile photo: fetched for ${id}`);

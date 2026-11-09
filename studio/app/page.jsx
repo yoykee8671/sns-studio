@@ -3,6 +3,7 @@ import {
   listPosts, listBrands, mediaUsage, loadBrand, loadLogoSvg, expirePublishedMedia, MEDIA_RETENTION_DAYS, clientBrand,
 } from '@/lib/store.mjs';
 import { hasInstagram } from '@/lib/instagram.mjs';
+import { credentials } from '@/lib/ig-accounts.mjs';
 import { listLayouts } from '@/lib/layouts.mjs';
 import { loadSeries } from '@/lib/series.mjs';
 import { suggestReady } from '@/lib/suggest.mjs';
@@ -66,7 +67,8 @@ export default async function Home({ searchParams }) {
         },
         overrides: full.style ?? {},
         avatarSrc: clientBrand(full).avatarSrc ?? null,
-        igReady: hasInstagram(full),
+        igReady: await hasInstagram(full),
+        igUser: (await credentials(full))?.username ?? null,
       };
     }),
   );

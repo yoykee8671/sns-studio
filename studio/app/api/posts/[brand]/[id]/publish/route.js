@@ -9,7 +9,7 @@ export const maxDuration = 300;
 export async function POST(req, { params }) {
   const { brand: brandId, id } = await params;
   const brand = await loadBrand(brandId);
-  const config = publishConfig(brand);
+  const config = await publishConfig(brand);
   if (!config.ready) return Response.json({ error: 'not configured', missing: config.missing }, { status: 412 });
 
   const { post } = await req.json();

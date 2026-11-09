@@ -1714,32 +1714,21 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
             )}
             {modal.kind === 'setup' && (
               <>
-                <h2>발행 설정이 필요해요</h2>
+                <h2>Instagram 연결이 필요해요</h2>
                 <p>
-                  Instagram 바로 발행은 Meta Graph API를 써요. <code>studio/.env.local</code> 파일에 아래 값을
-                  넣고 <code>npm run dev</code>를 다시 켜면 버튼이 활성화돼요.
+                  바로 발행은 이 계정의 Instagram 토큰으로 해요. <b>홈 › 계정별 스타일 관리 › Instagram 연결</b>에
+                  토큰을 붙여넣으면 버튼이 켜져요. (토큰 받는 방법도 거기 있어요.)
                 </p>
                 <ul className="missing">
                   {ctx.publish.missing.map((m) => (
-                    <li key={m.key}><code>{m.key}</code> — {m.label}</li>
+                    <li key={m.key}><b>{m.key}</b> — {m.label}</li>
                   ))}
                 </ul>
-                <details className="setup-guide">
-                  <summary>값을 구하는 방법 (자세히)</summary>
-                  <ol>
-                    <li><b>준비</b>: 인스타그램 계정을 <b>프로페셔널(비즈니스)</b>로 전환하고 Facebook 페이지와 연결해요.</li>
-                    <li><b>앱 만들기</b>: <a href="https://developers.facebook.com" target="_blank" rel="noreferrer">developers.facebook.com</a> → 앱 만들기(비즈니스) → 제품에서 <b>Instagram Graph API</b> 추가.</li>
-                    <li><b>토큰(IG_ACCESS_TOKEN)</b>: 도구 → 그래프 API 탐색기에서 권한
-                      <code>instagram_basic</code>, <code>instagram_content_publish</code>, <code>pages_show_list</code>를
-                      체크하고 토큰 발급 → 액세스 토큰 디버거에서 <b>장기 토큰(60일)</b>으로 연장해요.</li>
-                    <li><b>계정 ID(IG_USER_ID)</b>: 탐색기에서 <code>me/accounts</code> 호출 → 페이지 ID 확인 →
-                      <code>{'{페이지ID}?fields=instagram_business_account'}</code> 호출하면 나오는 숫자 ID예요.</li>
-                    <li><b>PUBLIC_BASE_URL</b>: 이 서버의 공개 주소(예: <code>https://sns.gnuol.com</code>)를
-                      서버 <code>.env</code>에 넣어요. (Instagram이 발행할 이미지를 이 주소에서 가져가요.)</li>
-                  </ol>
-                </details>
-                <p className="note">설정 전까지는 &lsquo;내려받기&rsquo;로 받아서 Meta Business Suite에 올려주세요.</p>
-                <div className="modal-actions"><button onClick={() => setModal(null)}>닫기</button></div>
+                <p className="note">연결 전까지는 &lsquo;내려받기&rsquo;로 받아서 Instagram 앱이나 Meta Business Suite에 올려주세요.</p>
+                <div className="modal-actions">
+                  <button onClick={() => setModal(null)}>닫기</button>
+                  <button className="primary" onClick={() => { setModal(null); leaveTo('/?panel=styles'); }}>연결하러 가기</button>
+                </div>
               </>
             )}
             {modal.kind === 'confirm' && (

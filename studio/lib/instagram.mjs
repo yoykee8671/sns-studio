@@ -8,25 +8,18 @@ const GRAPH = `https://${process.env.IG_GRAPH_HOST ?? 'graph.instagram.com'}/${
   process.env.META_GRAPH_VERSION ?? 'v26.0'
 }`;
 
-// Each brand publishes to its own Instagram account: the brand JSON's `ig` block
-// names the env vars holding that account's user id and token (pickydoggyclub
-// keeps the original IG_USER_ID / IG_ACCESS_TOKEN names).
-export function publishConfig(brand) {
-  const ig = brand?.ig;
-  if (!ig?.userIdEnv || !ig?.tokenEnv) {
-    return {
-      ready: false,
-      missing: [{ key: `brands/${brand?.id}.json`, label: 'ig.userIdEnv · ig.tokenEnv (이 계정이 쓸 환경변수 이름) 설정' }],
-    };
+import { credentials } from './ig-accounts.mjs';
+
+// Each brand publishes to its own Instagram account, connected in the app (계정별 스타일
+// 관리 → Instagram 연결; see ig-accounts.mjs) or through the env vars its brand JSON names.
+export async function publishConfig(brand) {
+  const missing = [];
+  if (!(await credentials(brand))) {
+    missing.push({ key: 'Instagram 연결', label: `${brand?.handle ?? brand?.id} — 홈 › 계정별 스타일 관리에서 토큰을 넣어 연결` });
   }
-  const required = {
-    [ig.userIdEnv]: `${brand.handle} Instagram 비즈니스 계정 ID`,
-    [ig.tokenEnv]: `${brand.handle} Meta 액세스 토큰`,
-    PUBLIC_BASE_URL: '이 서버의 공개 주소 (예: https://sns.gnuol.com) — Instagram이 사진을 가져가는 곳',
-  };
-  const missing = Object.entries(required)
-    .filter(([key]) => !process.env[key])
-    .map(([key, label]) => ({ key, label }));
+  if (!process.env.PUBLIC_BASE_URL) {
+    missing.push({ key: 'PUBLIC_BASE_URL', label: '이 서버의 공개 주소 (서버 .env)' });
+  }
   return { ready: missing.length === 0, missing };
 }
 
@@ -61,8 +54,9 @@ const itemParams = (item) =>
  * @param {{ brand: object, items: {url: string, kind: 'image'|'video'}[], caption: string }} o
  */
 export async function publish({ brand, items, caption }) {
-  const user = process.env[brand.ig.userIdEnv];
-  const token = process.env[brand.ig.tokenEnv];
+  const cred = await credentials(brand);
+  if (!cred) throw new Error('Instagram 연결이 없어요. 계정별 스타일 관리에서 연결해 주세요.');
+  const { userId: user, token } = cred;
   let creationId;
   if (items.length === 1) {
     const [item] = items;
@@ -95,9 +89,9 @@ export async function publish({ brand, items, caption }) {
  * user id/token the brand publishes with. Throws when the account has no token.
  */
 export async function fetchProfilePicture(brand) {
-  const user = brand?.ig?.userIdEnv && process.env[brand.ig.userIdEnv];
-  const token = brand?.ig?.tokenEnv && process.env[brand.ig.tokenEnv];
-  if (!user || !token) throw new Error('이 계정은 Instagram 연결 정보(토큰)가 없어요. 사진을 직접 올려주세요.');
+  const cred = await credentials(brand);
+  if (!cred) throw new Error('이 계정은 Instagram 연결(토큰)이 없어요. 사진을 직접 올리거나 먼저 연결해 주세요.');
+  const { userId: user, token } = cred;
   const { profile_picture_url: url } = await graph(user, { fields: 'profile_picture_url' }, token, 'GET');
   if (!url) throw new Error('Instagram이 프로필 사진 주소를 주지 않았어요.');
   const res = await fetch(url);
@@ -107,6 +101,27 @@ export async function fetchProfilePicture(brand) {
   return { data: Buffer.from(await res.arrayBuffer()), ext };
 }
 
-/** True when the brand has Instagram credentials configured (no network call). */
-export const hasInstagram = (brand) =>
-  Boolean(brand?.ig?.userIdEnv && process.env[brand.ig.userIdEnv] && brand?.ig?.tokenEnv && process.env[brand.ig.tokenEnv]);
+/** True when the brand has Instagram credentials (in-app or env; no network call). */
+export const hasInstagram = async (brand) => Boolean(await credentials(brand));
+
+/**
+ * Checks a token with Instagram and returns the account it belongs to
+ * ({ userId, username }). Throws Instagram's own message when it is invalid.
+ */
+export async function verifyToken(token) {
+  const me = await graph('me', { fields: 'user_id,username' }, token, 'GET');
+  return { userId: String(me.user_id ?? me.id ?? ''), username: me.username ?? '' };
+}
+
+/**
+ * Extends a long-lived Instagram Login token for another 60 days (allowed once it is a
+ * day old and not yet expired). Returns the new token.
+ */
+export async function refreshToken(token) {
+  const url = new URL(`https://${process.env.IG_GRAPH_HOST ?? 'graph.instagram.com'}/refresh_access_token`);
+  url.search = new URLSearchParams({ grant_type: 'ig_refresh_token', access_token: token });
+  const res = await fetch(url);
+  const json = await res.json();
+  if (!res.ok || json.error || !json.access_token) throw new Error(json.error?.message ?? `refresh ${res.status}`);
+  return json.access_token;
+}

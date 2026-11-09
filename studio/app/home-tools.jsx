@@ -18,6 +18,8 @@ export default function HomeTools({ newPost, series, templates, styles, children
   // The template editor's back link lands on /#my-templates: reopen that panel.
   useEffect(() => {
     if (window.location.hash === '#my-templates') setPanel('templates');
+    const panel = new URLSearchParams(window.location.search).get('panel');
+    if (['series', 'templates', 'styles'].includes(panel)) setPanel(panel);
   }, []);
   const toggle = (id) => setPanel((p) => (p === id ? null : id));
   const tabs = [
