@@ -53,8 +53,8 @@ function TemplatesManager({ brand, logoSvg, onOpen }) {
   const load = useCallback(() => {
     fetch('/api/layouts')
       .then((r) => r.json())
-      .then((d) => setLibrary({ layouts: d.layouts ?? [], hidden: d.hidden ?? [], favorites: d.favorites ?? [] }))
-      .catch(() => setLibrary({ layouts: [], hidden: [], favorites: [] }));
+      .then((d) => setLibrary({ layouts: d.layouts ?? [], hidden: d.hidden ?? [], favorites: d.favorites ?? [], overrides: d.overrides ?? {} }))
+      .catch(() => setLibrary({ layouts: [], hidden: [], favorites: [], overrides: {} }));
   }, []);
   useEffect(load, [load]);
   const notify = (text, kind = 'info') => {
@@ -81,6 +81,7 @@ function TemplatesManager({ brand, logoSvg, onOpen }) {
         logoSvg={logoSvg}
         hidden={library.hidden}
         favorites={library.favorites}
+        overrides={library.overrides}
         mine={library.layouts}
         onLibraryChange={load}
         notify={notify}

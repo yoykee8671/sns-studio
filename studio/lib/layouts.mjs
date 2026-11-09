@@ -58,12 +58,17 @@ export function stripSlides(post) {
     });
 }
 
-function toLayout({ id, name, desc, brand, post, createdAt }) {
+function toLayout({ id, name, desc, brand, post, createdAt, builtinKey }) {
+  if (builtinKey) {
+    // A built-in's edited design: always exactly one slide of that very template.
+    post = { ...post, template: builtinKey, slides: [{ ...(post.slides?.[0] ?? {}), template: builtinKey }] };
+  }
   if (!TEMPLATES[post?.template]) throw new Error('unknown template');
   if (!Array.isArray(post.slides) || !post.slides.length) throw new Error('slides required');
   const now = new Date().toISOString();
   return {
     id,
+    ...(builtinKey ? { builtinKey } : {}),
     name: cleanName(name) || '이름 없는 템플릿',
     desc: String(desc ?? '').trim().slice(0, 120),
     brand,
@@ -97,6 +102,7 @@ export async function listLayouts() {
       out.push({
         id: l.id, name: l.name, desc: l.desc, brand: l.brand, format: l.format,
         slides: l.slides.length, templates: l.slides.map((s) => s.template ?? l.template),
+        ...(l.builtinKey ? { builtinKey: l.builtinKey } : {}),
         // One-slide templates can be applied to a single slide from the editor's picker.
         slide: l.slides.length === 1 ? { ...l.slides[0], template: l.slides[0].template ?? l.template } : undefined,
         // First slide, for the preview card of any template (one slide or many).
@@ -110,8 +116,17 @@ export async function listLayouts() {
   return out.sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''));
 }
 
-/** From a post (editor "내 템플릿으로 저장") or a single built-in template ("복사해서 수정"). */
-export async function createLayout({ name, desc, brand, post, builtin }) {
+/**
+ * From a post (editor "내 템플릿으로 저장") or a single built-in template ("복제").
+ * override: true edits the built-in itself — one record per built-in (returned if it
+ * exists), which the pickers then show and apply in place of the code default.
+ */
+export async function createLayout({ name, desc, brand, post, builtin, override = false }) {
+  if (override) {
+    if (!TEMPLATES[builtin]) throw new Error(`unknown template: ${builtin}`);
+    const existing = (await listLayouts()).find((l) => l.builtinKey === builtin);
+    if (existing) return readLayout(existing.id);
+  }
   const id = `l-${Date.now().toString(36)}${randomBytes(2).toString('hex')}`;
   if (builtin) {
     const t = TEMPLATES[builtin];
@@ -119,9 +134,9 @@ export async function createLayout({ name, desc, brand, post, builtin }) {
     const format = t.meta.formats.includes('carousel') ? 'carousel' : t.meta.formats[0];
     const draft = { format, template: builtin, slides: [] };
     post = { ...draft, ratio: DEFAULT_RATIO, contentType: t.meta.contentType, slides: [t.meta.newSlide(draft)] };
-    name ||= `${t.meta.label} 복사본`;
+    name ||= override ? t.meta.label : `${t.meta.label} 복사본`;
   }
-  return write(toLayout({ id, name, desc, brand, post }));
+  return write(toLayout({ id, name, desc, brand, post, builtinKey: override ? builtin : undefined }));
 }
 
 /** Rename/describe ({ name, desc }) and/or replace the design from an edited post. */
@@ -137,6 +152,7 @@ export async function updateLayout(id, { name, desc, post }) {
     brand: prev.brand,
     post: base,
     createdAt: prev.createdAt,
+    builtinKey: prev.builtinKey,
   }));
 }
 
@@ -159,7 +175,24 @@ export function layoutAsPost(layout) {
     hashtags: [],
     layoutName: layout.name,
     layoutDesc: layout.desc,
+    ...(layout.builtinKey ? { builtinKey: layout.builtinKey } : {}),
   };
+}
+
+/** Edited built-ins: { [templateKey]: { id, name, slide } } from a listLayouts() result. */
+export const overridesOf = (list) =>
+  Object.fromEntries(list.filter((l) => l.builtinKey).map((l) => [l.builtinKey, { id: l.id, name: l.name, slide: l.first }]));
+
+/**
+ * A new slide of a built-in template with its edited design (if any): the override's
+ * design under the slide's own content (text the slide already carries wins).
+ */
+export function withOverride(slide, key, overrides) {
+  const o = overrides?.[key];
+  if (!o) return slide;
+  const { template, ...design } = structuredClone(o.slide);
+  const content = Object.fromEntries(Object.entries(slide).filter(([, v]) => v !== '' && v !== undefined));
+  return { ...design, ...content };
 }
 
 // ---- 즐겨찾는 템플릿: 'builtin:<key>' or 'mine:<id>' ----

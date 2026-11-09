@@ -149,7 +149,7 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
   const [capDraft, setCapDraft] = useState(null); // { detailed, short, hashtags, view }
   const [gallery, setGallery] = useState(null); // null | 'switch' (현재 장) | 'add' (새 장)
   const [loadError, setLoadError] = useState(null);
-  const [library, setLibrary] = useState({ layouts: [], hidden: [], favorites: [] }); // 내 템플릿, hidden built-ins, ☆
+  const [library, setLibrary] = useState({ layouts: [], hidden: [], favorites: [], overrides: {} }); // 내 템플릿, hidden, ☆, edited built-ins
   // Thumbnail being dragged: { from, to, dx, dy, overTrash, settling } (Instagram-style).
   const [drag, setDrag] = useState(null);
   const [uploadNote, setUploadNote] = useState(null); // "2/5" while a batch uploads
@@ -218,7 +218,7 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
   const loadLibrary = useCallback(() => {
     fetch('/api/layouts')
       .then((r) => r.json())
-      .then((d) => setLibrary({ layouts: d.layouts ?? [], hidden: d.hidden ?? [], favorites: d.favorites ?? [] }))
+      .then((d) => setLibrary({ layouts: d.layouts ?? [], hidden: d.hidden ?? [], favorites: d.favorites ?? [], overrides: d.overrides ?? {} }))
       .catch(() => {});
   }, []);
   useEffect(loadLibrary, [loadLibrary]);
@@ -819,7 +819,8 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
     setSel(at);
   };
   const addSlide = (templateKey) => {
-    const s = TEMPLATES[templateKey].meta.newSlide(post);
+    const o = library.overrides[templateKey];
+    const s = o ? designSlide(post, o.slide) : TEMPLATES[templateKey].meta.newSlide(post);
     if (templateKey !== post.template) s.template = templateKey;
     else delete s.template;
     insertSlide(s, insertIndex(post));
@@ -1258,7 +1259,7 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
               </Fragment>
             ))}
             {/* A reel is just a one-video post: adding a slide turns it back into a carousel. */}
-            {post.format !== 'single' && post.slides.length < maxSlides && (
+            {post.format !== 'single' && post.slides.length < maxSlides && !post.builtinKey && (
               <button className="add-slide" onClick={() => setGallery('add')} disabled={busy === 'upload'}>
                 <Icon d={PLUS} size={16} />장 추가
               </button>
@@ -1300,7 +1301,20 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
                 <button className="danger" onClick={() => removeSlide(sel)} disabled={post.slides.length === 1 || busy === 'upload'}>이 장 삭제</button>
               </div>
 
-              {templateChoices.length > 1 && (
+              {post.builtinKey && (
+                <div className="field">
+                  <label>기본 템플릿 수정 중</label>
+                  <div className="card row-card">
+                    <div className="row-card-text">
+                      <strong>{TEMPLATES[post.builtinKey].meta.label}</strong>
+                      <span className="note">저장하면 템플릿 창·새 장·새 게시물의 이 템플릿이 바뀌어요. 이미 만든 게시물은 그대로예요.</span>
+                    </div>
+                    <button className="topbar-danger" onClick={() => setModal({ kind: 'revertBuiltin' })}>기본값으로 되돌리기</button>
+                  </div>
+                </div>
+              )}
+
+              {templateChoices.length > 1 && !post.builtinKey && (
                 <div className="field">
                   <label>이 장의 템플릿</label>
                   <div className="card row-card">
@@ -1641,6 +1655,7 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
           quickLabel={gallery === 'add' ? '현재 템플릿 복제' : undefined}
           hidden={library.hidden}
           favorites={library.favorites}
+          overrides={library.overrides}
           mine={library.layouts}
           onLibraryChange={loadLibrary}
           notify={notify}
@@ -1653,7 +1668,10 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
             setGallery(null);
           }}
           onPick={(key) => {
-            if (gallery === 'switch') {
+            if (gallery === 'switch' && library.overrides[key]) {
+              // An edited built-in: its design, keeping this slide's photo and text (by role).
+              update((p) => (p.slides[sel] = designSlide(p, library.overrides[key].slide, p.slides[sel])));
+            } else if (gallery === 'switch') {
               const fromKey = slide.template ?? post.template;
               updateSlide(sel, {
                 template: key === post.template ? undefined : key,
@@ -1740,6 +1758,27 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
                 <div className="modal-actions">
                   <button onClick={() => setModal(null)}>취소</button>
                   <button className="primary" onClick={doPublish}>발행하기</button>
+                </div>
+              </>
+            )}
+            {modal.kind === 'revertBuiltin' && (
+              <>
+                <h2>기본값으로 되돌릴까요?</h2>
+                <p>이 템플릿에 한 수정(이름·디자인)이 지워지고 처음 모습으로 돌아가요. 이미 만든 게시물은 그대로예요.</p>
+                <div className="modal-actions">
+                  <button onClick={() => setModal(null)}>취소</button>
+                  <button
+                    className="modal-danger"
+                    onClick={async () => {
+                      const res = await fetch(apiBase, { method: 'DELETE' });
+                      if (!res.ok) return notify('되돌리지 못했어요.', 'error');
+                      setDirty(false);
+                      dirtyRef.current = false;
+                      router.push('/#my-templates');
+                    }}
+                  >
+                    되돌리기
+                  </button>
                 </div>
               </>
             )}

@@ -7,6 +7,8 @@ import path from 'node:path';
 process.env.STUDIO_CONTENT_ROOT = await mkdtemp(path.join(tmpdir(), 'sns-layouts-'));
 const store = await import('../lib/store.mjs');
 const layouts = await import('../lib/layouts.mjs');
+const { TEMPLATES } = await import('../lib/templates/index.mjs');
+const TEMPLATES_LABEL = (k) => TEMPLATES[k].meta.label;
 
 const BRAND = 'testbrand';
 const DAY = 86400000;
@@ -149,4 +151,28 @@ test('new post ids follow <account>_<YYMMDD>-<NN> in Korea time', async () => {
   const id1 = await store.newPostId(BRAND, new Date('2031-03-09T16:30:00Z')); // 03-10 01:30 KST
   assert.equal(id1, `${BRAND}_310310-01`); // the folder is claimed by newPostId itself
   assert.equal(await store.newPostId(BRAND, new Date('2031-03-09T16:30:00Z')), `${BRAND}_310310-02`);
+});
+
+test('editing a built-in keeps one record per built-in, one slide of that template', async () => {
+  const a = await layouts.createLayout({ builtin: 'cover-minimal', brand: BRAND, override: true });
+  const b = await layouts.createLayout({ builtin: 'cover-minimal', brand: BRAND, override: true });
+  assert.equal(a.id, b.id);
+  assert.equal(a.builtinKey, 'cover-minimal');
+  assert.equal(a.name, TEMPLATES_LABEL('cover-minimal'));
+  // the editor saves a renamed, restyled version — even if it tried to add slides or switch template
+  const saved = await layouts.updateLayout(a.id, {
+    name: '우리 표지',
+    post: { ...layouts.layoutAsPost(a), template: 'quote-dark', slides: [{ template: 'quote-dark', theme: 'paper', title: 'x' }, { body: 'y' }] },
+  });
+  assert.equal(saved.builtinKey, 'cover-minimal');
+  assert.equal(saved.slides.length, 1);
+  assert.equal(saved.template, 'cover-minimal');
+  assert.equal(saved.slides[0].theme, 'paper');
+  assert.ok(!saved.slides[0].title, 'text is not part of a design');
+  const overrides = layouts.overridesOf(await layouts.listLayouts());
+  assert.equal(overrides['cover-minimal'].name, '우리 표지');
+  const fresh = layouts.withOverride({ title: '', kicker: '' }, 'cover-minimal', overrides);
+  assert.equal(fresh.theme, 'paper');
+  assert.equal(layouts.withOverride({ title: 'kept' }, 'cover-minimal', overrides).title, 'kept');
+  await layouts.deleteLayout(a.id);
 });

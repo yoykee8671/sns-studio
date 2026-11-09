@@ -2,7 +2,7 @@ import { createPost, listPosts } from '@/lib/store.mjs';
 import { TEMPLATES } from '@/lib/templates/index.mjs';
 import { getSet, setSlides } from '@/lib/templates/sets.mjs';
 import { DEFAULT_RATIO, isRatio } from '@/lib/templates/sizes.mjs';
-import { readLayout, layoutAsPost } from '@/lib/layouts.mjs';
+import { readLayout, layoutAsPost, listLayouts, overridesOf, withOverride } from '@/lib/layouts.mjs';
 
 export async function GET() {
   return Response.json({ posts: await listPosts() });
@@ -16,6 +16,9 @@ export async function POST(req) {
   const { brand, template = 'editorial-photo', format = 'carousel', ratio, source, set: setId, layout: layoutId } = await req.json();
   if (ratio !== undefined && !isRatio(ratio)) return Response.json({ error: 'unknown ratio' }, { status: 400 });
   try {
+    // Built-ins the user edited start with their edited design.
+    const overrides = overridesOf(await listLayouts());
+    const styled = (slides, base) => slides.map((s) => withOverride(s, s.template ?? base, overrides));
     if (layoutId) {
       const l = layoutAsPost(await readLayout(layoutId));
       const t = TEMPLATES[l.template];
@@ -40,7 +43,7 @@ export async function POST(req) {
         format: 'carousel',
         ratio: ratio ?? DEFAULT_RATIO,
         contentType: 'knowledge',
-        slides: setSlides(set, draft),
+        slides: styled(setSlides(set, draft), set.slides[0]),
       });
       return Response.json({ post });
     }
@@ -55,7 +58,7 @@ export async function POST(req) {
       ratio: format === 'reel' ? undefined : (ratio ?? DEFAULT_RATIO),
       contentType: t.meta.contentType,
       source: t.meta.contentType === 'curation' ? { url: '', handle: '', permission: 'none', dm: '', note: '', ...source } : undefined,
-      slides: [t.meta.newSlide(draft)],
+      slides: styled([t.meta.newSlide(draft)], template),
     });
     return Response.json({ post });
   } catch (err) {

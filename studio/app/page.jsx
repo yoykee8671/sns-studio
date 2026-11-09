@@ -32,9 +32,10 @@ export default async function Home({ searchParams }) {
   const { account: accountParam } = await searchParams;
   // The server also runs this hourly; doing it here keeps the list honest right away.
   await expirePublishedMedia().catch(() => {});
-  const [posts, brands, usage, layouts] = await Promise.all([
+  const [posts, brands, usage, allLayouts] = await Promise.all([
     listPosts(), listBrands(), mediaUsage(), listLayouts(),
   ]);
+  const layouts = allLayouts.filter((l) => !l.builtinKey); // edited built-ins aren't 내 템플릿
   // Posts are listed per account (tabs); the choice lives in the URL so the editor's back
   // link returns to the same account.
   const account = brands.some((b) => b.id === accountParam) ? accountParam : brands[0]?.id;

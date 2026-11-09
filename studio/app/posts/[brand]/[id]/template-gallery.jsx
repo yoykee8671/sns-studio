@@ -48,17 +48,21 @@ const chunk = (arr, n) => Array.from({ length: Math.ceil(arr.length / n) }, (_, 
  */
 export default function TemplateGallery({
   post, brand, logoSvg, current, subtitle, quickLabel, onQuick, onPick, onClose,
-  hidden = [], favorites = [], mine = [], onPickMine, onLibraryChange, notify, onNavigate,
+  hidden = [], favorites = [], mine = [], overrides = {}, onPickMine, onLibraryChange, notify, onNavigate,
   mode = 'pick', onCreate,
 }) {
+  const [showHidden, setShowHidden] = useState(false);
   const manage = mode === 'manage';
   const fits = (key) => TEMPLATES[key]?.meta.formats.includes(post.format);
 
+  // A built-in the user edited shows its edited name and design (overrides[key]).
   const builtinCard = (key, extra = {}) => {
     const t = TEMPLATES[key];
+    const o = overrides[key];
     return {
-      id: `builtin:${key}`, item: { kind: 'builtin', key }, label: t.meta.label,
-      ...renderPreview(t, post, brand, logoSvg), on: key === current, hidden: hidden.includes(key),
+      id: `builtin:${key}`, item: { kind: 'builtin', key }, label: o?.name || t.meta.label, edited: Boolean(o),
+      ...renderPreview(t, post, brand, logoSvg, o?.slide ? (({ template, ...d }) => d)(o.slide) : {}),
+      on: key === current, hidden: hidden.includes(key),
       pick: manage ? null : () => onPick(key), ...extra,
     };
   };
@@ -77,7 +81,8 @@ export default function TemplateGallery({
   const sections = useMemo(() => {
     const usableMine = mine.filter((l) => (l.slide ?? l.first) && TEMPLATES[(l.slide ?? l.first).template] &&
       (manage || (l.slide && fits(l.slide.template))));
-    const builtins = Object.keys(TEMPLATES).filter((key) => fits(key) && (manage || !hidden.includes(key) || key === current));
+    // Hidden built-ins leave every row; in manage mode they wait in the folded '숨긴 템플릿'.
+    const builtins = Object.keys(TEMPLATES).filter((key) => fits(key) && (!hidden.includes(key) || (!manage && key === current)));
     const favCards = favorites.flatMap((f) => {
       if (f.startsWith('builtin:')) {
         const key = f.slice(8);
@@ -95,7 +100,11 @@ export default function TemplateGallery({
         cards: builtins.filter((k) => TEMPLATES[k].meta.role === role).map((k) => builtinCard(k)),
       })).filter((s) => s.cards.length),
     ];
-  }, [post, brand, logoSvg, mine, hidden, favorites, current, manage]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [post, brand, logoSvg, mine, hidden, favorites, current, manage, overrides]); // eslint-disable-line react-hooks/exhaustive-deps
+  const hiddenCards = useMemo(
+    () => (manage ? hidden.filter((k) => TEMPLATES[k] && fits(k)).map((k) => builtinCard(k)) : []),
+    [manage, hidden, overrides, post, brand, logoSvg], // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   const [armed, setArmed] = useState(null);
   const [busy, setBusy] = useState(null);
@@ -132,7 +141,7 @@ export default function TemplateGallery({
         await call('/api/layouts/hidden', send('PUT', { hidden: next }));
         notify?.(c.hidden
           ? `'${c.label}'을 다시 보이게 했어요.`
-          : `'${c.label}'을 숨겼어요. 공통 템플릿 관리에서 다시 보이게 할 수 있어요.`);
+          : `'${c.label}'을 목록에서 뺐어요. 공통 템플릿 관리 맨 아래 '숨긴 템플릿'에서 되살릴 수 있어요.`);
       });
       return;
     }
@@ -146,17 +155,21 @@ export default function TemplateGallery({
       notify?.(`'${item.layout.name}'을 지웠어요.`);
     });
   };
-  // 수정: a built-in can't change, so it is copied into 내 템플릿 first.
+  // 수정 edits the template itself — for a built-in, its edited design (one record per
+  // built-in, created on first edit); the code default stays for 기본값으로 되돌리기.
   const onEdit = (c) => {
     if (c.item.kind === 'mine') return go(`/templates/${c.item.layout.id}`);
     act(c.id, async () => {
-      const { layout } = await copyBuiltin(c.item.key);
+      const { layout } = await call('/api/layouts', send('POST', { builtin: c.item.key, brand: post.brand, override: true }));
       go(`/templates/${layout.id}`);
     });
   };
   const onDuplicate = (c) =>
     act(c.id, async () => {
-      const { layout } = c.item.kind === 'mine' ? await copyMine(c.item.layout) : await copyBuiltin(c.item.key);
+      const o = c.item.kind === 'builtin' && overrides[c.item.key];
+      const { layout } = c.item.kind === 'mine'
+        ? await copyMine(c.item.layout)
+        : o ? await copyMine({ id: o.id, name: o.name }) : await copyBuiltin(c.item.key);
       notify?.(`'${layout.name}'을 내 템플릿에 만들었어요.`);
     });
   const onStar = (c) =>
@@ -165,18 +178,11 @@ export default function TemplateGallery({
       await call('/api/layouts/favorites', send('PUT', { favorites: next }));
     });
 
-  const body = (
-    <div className="tg-body">
-      {sections.map((sec) => (
-        <section key={sec.id} className="tg-section">
-          <h3>{sec.title}</h3>
-          {chunk(sec.cards, ROW_MAX).map((row, r) => (
-            <TgRow key={r}>
-              {row.map((c) => {
+  const renderCard = (c) => {
                 const scale = CARD_W / c.size.width;
                 const starred = favorites.includes(c.id);
                 return (
-                  <div key={`${sec.id}-${c.id}`} className={`tg-card ${c.on ? 'on' : ''} ${c.hidden ? 'is-hidden' : ''}`}>
+                  <div key={c.id} className={`tg-card ${c.on ? 'on' : ''} ${c.hidden ? 'is-hidden' : ''}`}>
                     <button
                       className="tg-pick"
                       onClick={c.pick ?? (() => onEdit(c))}
@@ -209,8 +215,8 @@ export default function TemplateGallery({
                         </button>
                         <button
                           className={`tg-icon ${armed === c.id ? 'armed' : ''}`}
-                          aria-label={c.item.kind === 'mine' ? '삭제' : c.hidden ? '다시 보이기' : '숨기기'}
-                          title={c.item.kind === 'mine' ? (armed === c.id ? '한 번 더 누르면 삭제' : '삭제') : c.hidden ? '다시 보이기' : '숨기기'}
+                          aria-label={c.item.kind === 'mine' ? '삭제' : c.hidden ? '다시 보이기' : '목록에서 빼기'}
+                          title={c.item.kind === 'mine' ? (armed === c.id ? '한 번 더 누르면 삭제' : '삭제') : c.hidden ? '다시 보이기' : '목록에서 빼기'}
                           disabled={busy === c.id}
                           onClick={() => onX(c)}
                         >
@@ -220,16 +226,33 @@ export default function TemplateGallery({
                       <span className="tg-label">
                         {c.label}
                         {c.on && ' · 현재'}
-                        {c.hidden && ' · 숨김'}
+                        {c.edited && <small className="tg-edited"> · 수정됨</small>}
                       </span>
                     </div>
                   </div>
                 );
-              })}
+  };
+
+  const body = (
+    <div className="tg-body">
+      {sections.map((sec) => (
+        <section key={sec.id} className="tg-section">
+          <h3>{sec.title}</h3>
+          {chunk(sec.cards, ROW_MAX).map((row, r) => (
+            <TgRow key={r}>
+              {row.map(renderCard)}
             </TgRow>
           ))}
         </section>
       ))}
+      {hiddenCards.length > 0 && (
+        <section className="tg-section tg-hidden">
+          <button className="link tg-hidden-toggle" onClick={() => setShowHidden((v) => !v)} aria-expanded={showHidden}>
+            {showHidden ? '▾' : '▸'} 숨긴 템플릿 ({hiddenCards.length})
+          </button>
+          {showHidden && <TgRow>{hiddenCards.map(renderCard)}</TgRow>}
+        </section>
+      )}
     </div>
   );
 

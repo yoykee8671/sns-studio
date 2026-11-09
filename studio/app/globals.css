@@ -421,6 +421,8 @@ button.danger { color: var(--error); }
 .tg-actions .tg-icon.starred { background: #f5b301; color: #fff; }
 .tg-actions .tg-icon.armed { width: auto; padding: 0 7px; background: var(--error); }
 .tg-label { font-size: 13px; color: var(--ink); text-align: center; line-height: 1.35; }
+.tg-edited { color: var(--accent); font-weight: 600; }
+.tg-hidden-toggle { font-size: 15px; font-weight: 700; color: var(--muted); margin: 12px 0 6px; }
 .tg-manage { background: var(--surface); border-radius: var(--radius); overflow: hidden; margin-bottom: 22px; }
 @media (max-width: 920px) {
   .tg-arrow { display: none; } /* phones swipe the row */
