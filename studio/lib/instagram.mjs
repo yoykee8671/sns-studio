@@ -115,12 +115,30 @@ export async function verifyToken(token, handle) {
     const me = await graph('me', { fields: 'user_id,username' }, token, 'GET');
     return { userId: String(me.user_id ?? me.id ?? ''), username: me.username ?? '' };
   }
-  // A Facebook token reaches Instagram through the Pages it manages: pick the linked
-  // Instagram account that matches this brand's handle (or the only one there is).
-  const { data = [] } = await graph('me/accounts', { fields: 'name,instagram_business_account{id,username}', limit: '100' }, token, 'GET');
-  const found = data.map((p) => p.instagram_business_account).filter(Boolean);
+  // A Facebook token reaches Instagram through Pages: the ones it manages directly, and
+  // those owned by / shared with its business portfolios (system-user tokens).
+  const IGF = 'name,instagram_business_account{id,username},connected_instagram_account{id,username}';
+  const list = async (path, fields) =>
+    (await graph(path, { fields, limit: '100' }, token, 'GET').catch(() => ({ data: [] }))).data ?? [];
+  await graph('me', { fields: 'id' }, token, 'GET'); // a bad token fails here with Meta's own message
+  const pages = [...await list('me/accounts', IGF)];
+  const businesses = await list('me/businesses', 'name');
+  for (const b of businesses) {
+    pages.push(...await list(`${b.id}/owned_pages`, IGF), ...await list(`${b.id}/client_pages`, IGF));
+  }
+  const found = [...new Map(pages.map((p) => p.instagram_business_account ?? p.connected_instagram_account)
+    .filter(Boolean).map((a) => [a.id, a])).values()];
   if (!found.length) {
-    throw new Error('이 토큰으로 볼 수 있는 Facebook 페이지에 연결된 Instagram 비즈니스 계정이 없어요. 토큰 권한(pages_show_list, instagram_basic, instagram_content_publish)과 페이지·Instagram 연결을 확인해 주세요.');
+    // Say what the token can see, so the missing piece is clear (no secrets in here).
+    const granted = (await list('me/permissions', 'permission,status')).filter((x) => x.status === 'granted').map((x) => x.permission);
+    const names = [...new Set(pages.map((p) => p.name))];
+    const need = ['pages_show_list', 'instagram_basic', 'instagram_content_publish', 'business_management'].filter((x) => !granted.includes(x));
+    throw new Error([
+      'Instagram 비즈니스 계정을 찾지 못했어요.',
+      `보이는 페이지: ${names.length ? names.join(', ') : '없음'}`,
+      `보이는 비즈니스 포트폴리오: ${businesses.length ? businesses.map((b) => b.name).join(', ') : '없음'}`,
+      granted.length ? `빠진 권한: ${need.length ? need.join(', ') : '없음'}` : '권한 목록을 읽지 못했어요(시스템 사용자 토큰이면 정상).',
+    ].join(' · '));
   }
   const want = String(handle ?? '').replace(/^@/, '').toLowerCase();
   const ig = found.find((a) => a.username?.toLowerCase() === want) ?? (found.length === 1 ? found[0] : null);
