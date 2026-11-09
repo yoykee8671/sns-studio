@@ -30,3 +30,21 @@ test('a photo template without a photo exports an empty slot, no hint text', () 
   assert.ok(!html.includes('사진이나 영상을 올려주세요'));
   assert.match(html, /media-empty/);
 });
+
+test('음영 레이어: off by default, sits right after the media, direction and strength apply', () => {
+  for (const [key, t] of Object.entries(TEMPLATES)) {
+    if (t.meta.brandClosing) continue;
+    assert.ok(t.meta.sliders?.some((s) => s.key === 'veil'), `${key} has 음영 레이어`);
+  }
+  assert.ok(!render('cover-photo-full', { media: 'media/a.jpg' }, '/m/a.jpg').includes('u-veil'));
+  const bottom = render('cover-photo-full', { media: 'media/a.jpg', veil: 50 }, '/m/a.jpg');
+  assert.match(bottom, /data-media[^>]*>\s*<div class="u-veil"[^>]*linear-gradient\(to top, rgba\(0,0,0,0\.45\)/);
+  assert.match(render('numbered-section', { media: 'media/a.jpg', photo: 'show', veil: 100, veilDir: 'full' }, '/m/a.jpg'),
+    /class="u-veil"[^>]*background:rgba\(0,0,0,0\.9\)/);
+  assert.match(render('inner-essay', { media: 'media/a.jpg', veil: 40, veilDir: 'both' }, '/m/a.jpg'), /u-veil[^>]*to bottom/);
+  // video: placed after </video>
+  const vid = TEMPLATES['editorial-photo'].renderSlide({ brand, post: { format: 'carousel', template: 'editorial-photo', slides: [] },
+    slide: { headline: '', body: '', stickers: [], media: 'media/a.mp4', mediaType: 'video', veil: 30 }, index: 1,
+    mediaSrc: '/m/a.mp4', mediaType: 'video', logoSvg: '', mode: 'preview' });
+  assert.match(vid, /<\/video><div class="u-veil"/);
+});

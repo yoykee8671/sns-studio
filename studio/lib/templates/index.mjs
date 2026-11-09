@@ -20,6 +20,7 @@ import * as closingImage from './closing-image.mjs';
 import { withSource } from './source-tag.mjs';
 import { withLayout } from './layout-overrides.mjs';
 import { withBgPhoto } from './bg-photo.mjs';
+import { withShade } from './shade-layer.mjs';
 
 const MODULES = {
   'editorial-photo': editorialPhoto,
@@ -46,7 +47,7 @@ const MODULES = {
 // a photo slot (text-only ones take it as a background, bg-photo.mjs) and the per-slide
 // 요소 옮기기 overrides (layout-overrides.mjs).
 export const TEMPLATES = Object.fromEntries(
-  Object.entries(MODULES).map(([key, mod]) => [key, withLayout(withVideo(withBgPhoto(withSource(key, mod))))]),
+  Object.entries(MODULES).map(([key, mod]) => [key, withLayout(withShade(withVideo(withBgPhoto(withSource(key, mod)))))]),
 );
 
 // Every photo slot also takes a video: the editor previews it playing, and the export

@@ -124,7 +124,10 @@ export function slideRuntime({ toneThreshold = 0.62 } = {}) {
     '.sticker .st-handle{opacity:0;transition:opacity .15s}' +
     '.sticker:hover .st-handle,.sticker.dragging .st-handle,.sticker:active .st-handle{opacity:1}' +
     '.sticker:hover{outline:2px dashed rgba(59,99,188,.7);outline-offset:6px}' +
-    '@media (pointer: coarse){.sticker .st-handle{opacity:.85}}';
+    // On phones the preview is scaled to ~1/4: handles get much bigger so a finger can
+    // still grab them (28px on the canvas would be ~7px on screen).
+    '@media (pointer: coarse){.sticker .st-handle{opacity:.9;width:96px!important;height:96px!important;' +
+    'right:-48px!important;bottom:-48px!important;border-width:6px!important}}';
   document.head.appendChild(style);
 
   // ---- 요소 옮기기 ----
@@ -157,7 +160,8 @@ export function slideRuntime({ toneThreshold = 0.62 } = {}) {
       '.lay-active{outline:3px solid #2929BF!important}' +
       '.lay-guide{position:fixed;background:#ff2d78;z-index:99;pointer-events:none;display:none}' +
       '.lay-handle{position:absolute;right:8px;bottom:8px;width:40px;height:40px;border-radius:8px;background:#fff;' +
-      'border:3px solid #2929BF;cursor:nwse-resize;z-index:9;box-shadow:0 1px 6px rgba(0,0,0,.35)}';
+      'border:3px solid #2929BF;cursor:nwse-resize;z-index:9;box-shadow:0 1px 6px rgba(0,0,0,.35)}' +
+      '@media (pointer: coarse){.lay-handle{width:110px;height:110px;border-width:7px;border-radius:18px}}';
     document.head.appendChild(st);
     const gx = document.createElement('div'); gx.className = 'lay-guide'; gx.style.cssText += 'top:0;bottom:0;width:3px';
     const gy = document.createElement('div'); gy.className = 'lay-guide'; gy.style.cssText += 'left:0;right:0;height:3px';
@@ -238,7 +242,8 @@ export function slideRuntime({ toneThreshold = 0.62 } = {}) {
   };
 
   document.addEventListener('pointerdown', (e) => {
-    if (layoutEdit) {
+    // Stickers keep their own drag/resize even while 요소 옮기기 is on.
+    if (layoutEdit && !e.target.closest('.sticker')) {
       const resizing = e.target.closest('.lay-handle');
       const el = resizing ? resizing.closest('[data-media-box]') : e.target.closest(MOVABLE);
       if (!el) return;
@@ -340,7 +345,8 @@ export function slideRuntime({ toneThreshold = 0.62 } = {}) {
     }
   });
 
-  document.addEventListener('pointerup', () => {
+  // A cancelled touch (e.g. the system took over) ends the gesture like a release.
+  const endGesture = () => {
     if (lay) {
       lay.el.classList.remove('lay-active');
       showGuides(null, null);
@@ -373,7 +379,9 @@ export function slideRuntime({ toneThreshold = 0.62 } = {}) {
       }
       pan = null;
     }
-  });
+  };
+  document.addEventListener('pointerup', endGesture);
+  document.addEventListener('pointercancel', endGesture);
 })();`;
 }
 
