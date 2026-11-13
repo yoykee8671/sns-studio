@@ -364,7 +364,13 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
   const slideHtml = useCallback(
     (p, i, mode) => {
       const t = resolveTemplate(p, p.slides[i]);
-      const { src, type } = mediaOf(brandId, postId, p.slides[i], ctx.closing, t.meta);
+      let { src, type } = mediaOf(brandId, postId, p.slides[i], ctx.closing, t.meta);
+      // Uploaded videos show light stand-ins on screen (exports use the original): a small
+      // preview MP4 in the main preview, the first frame as a still in the thumbnails.
+      if (type === 'video' && p.slides[i].media) {
+        src += mode === 'preview' ? '?v=preview' : '?v=poster';
+        if (mode !== 'preview') type = 'image';
+      }
       return t.renderSlide({
         brand: ctx.brand,
         post: p,
@@ -1077,19 +1083,23 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
     return { ...next, ...photoPatch(t.meta, next) };
   };
 
-  const saveAsLayout = async (name) => {
+  // scope 'one': just the selected slide (applies to any slide later); 'all': the line-up.
+  const saveAsLayout = async (name, scope = 'all') => {
     setBusy('layout');
     try {
+      const key = post.slides[sel].template ?? post.template;
+      const { template: _t, ...slide } = post.slides[sel];
+      const body = scope === 'one' ? { ...post, template: key, slides: [slide] } : post;
       const res = await fetch('/api/layouts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, post }),
+        body: JSON.stringify({ name, post: body }),
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error);
       setModal(null);
       loadLibrary();
-      notify(`'${d.layout.name}' 템플릿으로 저장했어요. 새 게시물 만들 때 '내 템플릿'에서 고를 수 있어요.`);
+      notify(`'${d.layout.name}' 템플릿으로 저장했어요. 템플릿 창의 '내 템플릿'에 있어요.`);
     } catch (e) {
       notify(`템플릿 저장 실패: ${e.message}`, 'error');
     } finally {
@@ -1511,7 +1521,7 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
               <AdjustPanel
                 key={`${sel}-${slide.template ?? post.template}`}
                 fields={sMeta.fields}
-                sliders={sMeta.sliders ?? []}
+                sliders={(sMeta.sliders ?? []).filter((s) => !s.hidden?.(slide))}
                 slide={slide}
                 brand={ctx.brand}
                 onSlider={(k, v) => updateSlide(sel, { [k]: v })}
@@ -1780,7 +1790,30 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
             } else addSlide(key);
             setGallery(null);
           }}
-          onPickMine={(layout) => {
+          onPickMine={async (layout) => {
+            if (!layout.slide) {
+              // A template of several slides: add all of them after this slide.
+              try {
+                const d = await fetch(`/api/layouts/${layout.id}`).then((r) => r.json());
+                if (d.error) throw new Error(d.error);
+                const lp = d.post;
+                const slides = lp.slides.map((s) => designSlide(post, { ...s, template: s.template ?? lp.template }));
+                const at = gallery === 'switch' ? sel + 1 : insertIndex(post);
+                update((p) => p.slides.splice(at, 0, ...slides));
+                setImages((im) => {
+                  const next = [...im];
+                  next.splice(at, 0, ...slides.map((sl) => ({ state: mediaStateOf(post, sl) })));
+                  return next;
+                });
+                setReports({});
+                setSel(at);
+                notify(`'${layout.name}' ${slides.length}장을 추가했어요.`);
+              } catch (e) {
+                notify(`템플릿을 불러오지 못했어요: ${e.message}`, 'error');
+              }
+              setGallery(null);
+              return;
+            }
             if (gallery === 'switch') {
               update((p) => (p.slides[sel] = designSlide(p, layout.slide, p.slides[sel])));
             } else {
@@ -1984,14 +2017,30 @@ export default function Editor({ brandId, postId, kind = 'post' }) {
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
-                  saveAsLayout(modal.name);
+                  saveAsLayout(modal.name, modal.scope ?? (post.slides.length > 1 ? 'one' : 'all'));
                 }}
               >
                 <h2>내 템플릿으로 저장</h2>
                 <p>
-                  지금 게시물의 장 구성({post.slides.length}장)과 장마다 고른 템플릿·디자인 설정
-                  (글자 크기·색·음영·스티커 등)을 저장해요. 글과 사진은 저장하지 않아요.
+                  고른 템플릿과 디자인 설정(글자 크기·색·음영·스티커 등)을 저장해요. 글과 사진은
+                  저장하지 않아요.
                 </p>
+                {post.slides.length > 1 && (
+                  <div className="scope-pick" role="radiogroup" aria-label="저장할 범위">
+                    {[['one', `이 장만 (${sel + 1}장)`, '어느 장에든 템플릿 바꾸기로 적용'], ['all', `전체 ${post.slides.length}장`, '고르면 이 장들이 한꺼번에 추가돼요']].map(([v, label, hint]) => (
+                      <label key={v} className={(modal.scope ?? 'one') === v ? 'on' : ''}>
+                        <input
+                          type="radio"
+                          name="layout-scope"
+                          checked={(modal.scope ?? 'one') === v}
+                          onChange={() => setModal({ ...modal, scope: v })}
+                        />
+                        <b>{label}</b>
+                        <small>{hint}</small>
+                      </label>
+                    ))}
+                  </div>
+                )}
                 <div className="field">
                   <label>템플릿 이름</label>
                   <input
@@ -2131,7 +2180,11 @@ function ColorPicker({ value, brand, onChange }) {
               } catch {}
             }}
           >
-            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 4l6 6M17 7l-9.5 9.5L4 20l3.5-3.5" /><path d="M13 5l6 6" /></svg>
+            <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="m2 22 1-1h3l9-9" />
+              <path d="M3 21v-3l9-9" />
+              <path d="m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3l.4.4Z" />
+            </svg>
           </button>
         )}
         <button className={`swatch none ${!value ? 'on' : ''}`} aria-label="기본 색 (템플릿)" onClick={() => onChange(undefined)} />
@@ -2190,7 +2243,7 @@ function AdjustPanel({ fields, sliders, slide, brand, onSlider, onTextStyle }) {
   if (tool.kind === 'slider') {
     isSet = slide[tool.key] !== undefined;
     value = slide[tool.key] ?? tool.default;
-    label = `${value}${tool.unit ?? ''}`;
+    label = tool.zeroLabel && Number(value) === 0 ? tool.zeroLabel : `${value}${tool.unit ?? ''}`;
   } else if (!tool.isColor) {
     const cur = styles[fieldKey]?.[tool.id];
     isSet = cur !== undefined;

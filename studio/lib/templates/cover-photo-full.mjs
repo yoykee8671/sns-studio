@@ -20,6 +20,9 @@ export const meta = {
   options: [
     { key: 'logo', label: '로고', choices: [[undefined, '표시'], ['off', '숨김']] },
   ],
+  sliders: [
+    { key: 'shadeLevel', label: '기본 음영', min: 0, max: 100, step: 5, default: 100, unit: '%' },
+  ],
   newSlide: () => ({ template: 'cover-photo-full', kicker: '', title: '', stickers: [] }),
   sample: { kicker: '주말 산책 코스', title: '서울 근교\n단풍 숲 5곳' },
 };
@@ -30,6 +33,9 @@ export function renderSlide({ brand, post, slide, mediaSrc, mediaType, logoSvg, 
   const palette = brandPalette(brand);
   const stickers = (slide.stickers ?? []).map((st) => renderSticker(st, brand)).join('');
   const focus = /^\d{1,3}% \d{1,3}%$/.test(slide.focus ?? '') ? slide.focus : '50% 50%';
+  // 기본 음영 0–100 scales the template's own bottom gradient (0 = off).
+  const k = Math.min(100, Math.max(0, Number(slide.shadeLevel ?? 100))) / 100;
+  const a = (v) => Math.round(v * k * 1000) / 1000;
 
   return `<!doctype html>
 <html lang="ko"><head><meta charset="utf-8">
@@ -47,7 +53,7 @@ export function renderSlide({ brand, post, slide, mediaSrc, mediaType, logoSvg, 
   .media-missing { display: grid; place-items: center; background: #2a2a2a; color: #888; font-size: 32px; }
   .shade {
     position: absolute; inset: 0; pointer-events: none;
-    background: linear-gradient(to top, rgba(0,0,0,.72) 0%, rgba(0,0,0,.42) 24%, rgba(0,0,0,.1) 46%, rgba(0,0,0,0) 62%);
+    background: linear-gradient(to top, rgba(0,0,0,${a(0.72)}) 0%, rgba(0,0,0,${a(0.42)}) 24%, rgba(0,0,0,${a(0.1)}) 46%, rgba(0,0,0,0) 62%);
   }
   .logo { position: absolute; top: 56px; left: 50%; transform: translateX(-50%); color: #fff; }
   .logo svg { display: block; width: 300px; height: auto; }

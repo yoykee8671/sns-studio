@@ -13,6 +13,7 @@ import * as innerInterview from './inner-interview.mjs';
 import * as innerNumberedDark from './inner-numbered-dark.mjs';
 import * as innerItemDark from './inner-item-dark.mjs';
 import * as innerPhotoSplit from './inner-photo-split.mjs';
+import * as innerPlain from './inner-plain.mjs';
 import * as quoteDark from './quote-dark.mjs';
 import * as quoteSerif from './quote-serif.mjs';
 import * as lastFollow from './last-follow.mjs';
@@ -32,6 +33,7 @@ const MODULES = {
   'cover-photo-full': coverPhotoFull,
   'cover-center-dark': coverCenterDark,
   'cover-minimal': coverMinimal,
+  'inner-plain': innerPlain,
   'inner-essay': innerEssay,
   'inner-interview': innerInterview,
   'inner-numbered-dark': innerNumberedDark,

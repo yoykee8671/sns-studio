@@ -32,6 +32,12 @@ export const meta = {
       choices: [[undefined, '화이트'], ['dark', '블랙']],
       hidden: (slide) => slide.layout === 'overlay',
     },
+    {
+      key: 'bandPos',
+      label: '밴드 위치',
+      choices: [[undefined, '자동 (피드 아래·릴스 위)'], ['top', '위'], ['bottom', '아래']],
+      hidden: (slide) => slide.layout === 'overlay',
+    },
     { key: 'fit', label: '원본 맞춤', choices: [[undefined, '자르지 않기'], ['cover', '꽉 채우기']] },
     {
       key: 'logo',
@@ -46,6 +52,11 @@ export const meta = {
       choices: [[undefined, '표시'], ['off', '숨김']],
       hidden: (slide) => slide.layout !== 'overlay',
     },
+  ],
+  sliders: [
+    // 0 = as tall as its text; otherwise a share of the canvas height (text stays centered).
+    { key: 'bandSize', label: '밴드 높이', min: 0, max: 70, step: 1, default: 0, unit: '%', zeroLabel: '자동', hidden: (slide) => slide.layout === 'overlay' },
+    { key: 'shadeLevel', label: '기본 음영', min: 0, max: 100, step: 5, default: 100, unit: '%', hidden: (slide) => slide.layout !== 'overlay' },
   ],
   newSlide: (post) => ({
     headline: '',
@@ -76,6 +87,11 @@ export function renderSlide({ brand, post, slide, index, mediaSrc, mediaType, lo
     text ? `<div class="${cls}" data-field="${key}" data-max-lines="${max}" data-label="${label}" style="${basePx ? fieldStyle(slide, key, basePx) : ''}">${renderMarkup(text, palette)}</div>` : '';
 
   const onVideo = slide.layout === 'overlay';
+  const bandTop = slide.bandPos === 'top' || (slide.bandPos !== 'bottom' && isReel);
+  const bandPct = Math.min(70, Math.max(0, Number(slide.bandSize) || 0));
+  // 기본 음영 0–100 scales the overlay layout's own gradients (0 = off).
+  const k = Math.min(100, Math.max(0, Number(slide.shadeLevel ?? 100))) / 100;
+  const a = (v) => Math.round(v * k * 1000) / 1000;
   // Full-bleed layout letterboxes on black; the band layout keeps the theme color.
   const baseColor = onVideo ? '#000000' : bg;
 
@@ -126,7 +142,8 @@ export function renderSlide({ brand, post, slide, index, mediaSrc, mediaType, lo
     display: grid; place-items: center; background: ${dark || onVideo ? '#2a2a2a' : '#ecebe6'};
     color: ${dark || onVideo ? '#888' : '#8a877f'}; font-size: 32px;
   }
-  .band { flex: none; padding: ${isReel ? '190px 72px 56px' : '40px 64px 46px'}; }
+  .band { flex: none; padding: ${isReel && bandTop ? '190px 72px 56px' : isReel ? '56px 72px 300px' : '40px 64px 46px'}; }
+  ${bandPct ? `.band { height: ${bandPct}%; display: flex; flex-direction: column; justify-content: center; overflow: hidden; }` : ''}
   .headline {
     font-family: '${fonts.headline}'; font-weight: 700;
     font-size: ${headlinePx}px; line-height: ${isCover ? 1.22 : 1.3};
@@ -144,11 +161,11 @@ export function renderSlide({ brand, post, slide, index, mediaSrc, mediaType, lo
   .ov-shade {
     position: absolute; inset: 0; pointer-events: none;
     background: linear-gradient(to top,
-      rgba(0,0,0,.78) 0%, rgba(0,0,0,.52) ${isReel ? 20 : 22}%, rgba(0,0,0,.18) ${isReel ? 36 : 42}%, rgba(0,0,0,0) ${isReel ? 52 : 58}%);
+      rgba(0,0,0,${a(0.78)}) 0%, rgba(0,0,0,${a(0.52)}) ${isReel ? 20 : 22}%, rgba(0,0,0,${a(0.18)}) ${isReel ? 36 : 42}%, rgba(0,0,0,0) ${isReel ? 52 : 58}%);
   }
   .ov-shade-top {
     position: absolute; left: 0; right: 0; top: 0; height: 260px; pointer-events: none;
-    background: linear-gradient(to bottom, rgba(0,0,0,.28), rgba(0,0,0,0));
+    background: linear-gradient(to bottom, rgba(0,0,0,${a(0.28)}), rgba(0,0,0,0));
   }
   .ov-credit {
     position: absolute; top: 56px; left: 110px; max-width: calc(100% - 220px);
@@ -178,7 +195,7 @@ export function renderSlide({ brand, post, slide, index, mediaSrc, mediaType, lo
 <body data-mode="${['preview', 'overlay'].includes(mode) ? mode : 'export'}" data-base-color="${baseColor}"
   data-fit="${fit}">
   <div class="frame">
-    ${onVideo ? overlaid : isReel ? band + media : media + band}
+    ${onVideo ? overlaid : bandTop ? band + media : media + band}
   </div>
   ${stickers}
 <script>${slideRuntime()}</script>

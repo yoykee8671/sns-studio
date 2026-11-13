@@ -74,14 +74,14 @@ export default function TemplateGallery({
       label: l.slides > 1 ? `${l.name} · ${l.slides}장` : l.name,
       ...renderPreview(TEMPLATES[slide.template], post, brand, logoSvg, slide, l.preview),
       on: false,
-      // Only one-slide templates apply to a single slide; bigger ones start new posts.
-      pick: manage || !l.slide ? null : () => onPickMine(l),
+      // One-slide templates apply to the slide; bigger ones add all their slides.
+      pick: manage ? null : () => onPickMine(l),
     };
   };
 
   const sections = useMemo(() => {
     const usableMine = mine.filter((l) => (l.slide ?? l.first) && TEMPLATES[(l.slide ?? l.first).template] &&
-      (manage || (l.slide && fits(l.slide.template))));
+      (manage || (l.templates ?? []).every(fits)));
     // Hidden built-ins leave every row; in manage mode they wait in the folded '숨긴 템플릿'.
     const builtins = Object.keys(TEMPLATES).filter((key) => fits(key) && (!hidden.includes(key) || (!manage && key === current)));
     const favCards = favorites.flatMap((f) => {

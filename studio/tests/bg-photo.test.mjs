@@ -16,9 +16,10 @@ test('every template has a photo slot', () => {
 test('text-only templates take an uploaded photo as a veiled background', () => {
   const dark = render('quote-dark', { media: 'media/a.jpg' }, '/m/a.jpg');
   assert.match(dark, /class="u-bg" data-media-box><img class="u-bg-media" data-media src="\/m\/a\.jpg"/);
-  assert.match(dark, /rgba\(0,0,0,\.55\)/); // dark page → dark veil
+  assert.match(dark, /rgba\(0,0,0,0\.55\)/); // dark page → dark veil
   const paper = render('inner-essay', { media: 'media/a.jpg' }, '/m/a.jpg');
-  assert.match(paper, /rgba\(255,255,255,\.72\)/); // paper page → light veil
+  assert.match(paper, /rgba\(255,255,255,0\.72\)/); // paper page → light veil
+  assert.match(render('quote-dark', { media: 'media/a.jpg', bgVeil: 50 }, '/m/a.jpg'), /rgba\(0,0,0,0\.28\)/); // 배경 음영 50%
   assert.match(render('inner-essay', { media: 'media/a.jpg', bgPhoto: 'none' }, '/m/a.jpg'), /background: transparent/);
   // no photo: the template exactly as before
   assert.ok(!render('inner-essay', {}).includes('u-bg'));
@@ -47,4 +48,27 @@ test('음영 레이어: off by default, sits right after the media, direction an
     slide: { headline: '', body: '', stickers: [], media: 'media/a.mp4', mediaType: 'video', veil: 30 }, index: 1,
     mediaSrc: '/m/a.mp4', mediaType: 'video', logoSvg: '', mode: 'preview' });
   assert.match(vid, /<\/video><div class="u-veil"/);
+});
+
+test('기본 음영: every built-in shade follows its 0–100 slider (0 = off)', () => {
+  for (const key of ['editorial-photo', 'cover-photo-full', 'curation-frame']) {
+    assert.ok(TEMPLATES[key].meta.sliders.some((x) => x.key === 'shadeLevel' && x.label === '기본 음영'), key);
+  }
+  assert.match(render('cover-photo-full', { media: 'media/a.jpg' }, '/m/a.jpg'), /rgba\(0,0,0,0\.72\) 0%/);
+  assert.match(render('cover-photo-full', { media: 'media/a.jpg', shadeLevel: 0 }, '/m/a.jpg'), /rgba\(0,0,0,0\) 0%/);
+  assert.match(render('curation-frame', { media: 'media/a.jpg', layout: 'overlay', shadeLevel: 50 }, '/m/a.jpg'), /rgba\(0,0,0,0\.39\) 0%/);
+});
+
+test('속지(기본): plain by default; each element appears once written and can be hidden', () => {
+  const t = TEMPLATES['inner-plain'];
+  assert.equal(t.meta.label, '속지 (기본)');
+  assert.ok(t.meta.mediaTypes.includes('video'));
+  const plain = render('inner-plain', { media: 'media/a.jpg' }, '/m/a.jpg');
+  assert.ok(!/data-field=/.test(plain) && !plain.includes('class="logo"') && !plain.includes('u-veil') && !plain.includes('u-source'));
+  const full = render('inner-plain', { media: 'media/a.jpg', kicker: 'k', headline: 'h', body: 'b', source: '출처 | x',
+    logo: 'show', veil: 60, veilDir: 'full', textPos: 'top' }, '/m/a.jpg');
+  for (const f of ['kicker', 'headline', 'body', 'source']) assert.match(full, new RegExp(`data-field="${f}"`));
+  assert.match(full, /class="logo"/);
+  assert.match(full, /u-veil/);
+  assert.ok(!render('inner-plain', { media: 'media/a.jpg', headline: 'h', headlineShow: 'off' }, '/m/a.jpg').includes('data-field="headline"'));
 });

@@ -11,6 +11,11 @@ const option = {
   hidden: (slide) => !slide.media && !slide.image,
 };
 
+const veilSlider = {
+  key: 'bgVeil', label: '배경 음영', min: 0, max: 100, step: 5, default: 100, unit: '%',
+  hidden: (slide) => (!slide.media && !slide.image) || slide.bgPhoto === 'none',
+};
+
 // The template's page color, read from its `html, body { … background: X }` rule.
 function pageIsDark(html) {
   const m = /html,\s*body\s*\{[^}]*background:\s*(#[0-9a-fA-F]{3,6})/.exec(html);
@@ -34,12 +39,15 @@ export function withBgPhoto(mod) {
       // Only a slide that actually has a photo uses one: no photo = the template as is.
       usesMedia: (slide) => Boolean(slide.media || slide.image),
       options: [...(meta.options ?? []), option],
+      sliders: [...(meta.sliders ?? []), veilSlider],
     },
     renderSlide: (o) => {
       const html = mod.renderSlide(o);
       if (!o.mediaSrc || !(o.slide.media || o.slide.image)) return html;
       const veil = o.slide.bgPhoto && o.slide.bgPhoto !== 'auto' ? o.slide.bgPhoto : pageIsDark(html) ? 'dark' : 'light';
-      const veilCss = { dark: 'rgba(0,0,0,.55)', light: 'rgba(255,255,255,.72)', none: 'transparent' }[veil] ?? 'transparent';
+      // 배경 음영 0–100 scales the veil (0 = the photo as is).
+      const k = Math.min(100, Math.max(0, Number(o.slide.bgVeil ?? 100))) / 100;
+      const veilCss = { dark: `rgba(0,0,0,${Math.round(55 * k) / 100})`, light: `rgba(255,255,255,${Math.round(72 * k) / 100})`, none: 'transparent' }[veil] ?? 'transparent';
       const focus = /^\d{1,3}% \d{1,3}%$/.test(o.slide.focus ?? '') ? o.slide.focus : '50% 50%';
       // body becomes its own stacking context so the layer sits above the page color but
       // below every piece of the template's content.

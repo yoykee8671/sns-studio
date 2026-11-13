@@ -449,6 +449,11 @@ button.danger { color: var(--error); }
 .banner-error { background: #fdecec; color: #9b1c1c; border-bottom-color: #f5c6c6; }
 .banner-info { background: #eef0fb; color: #23237a; border-bottom-color: #d6d9f4; }
 .banner .link { font-size: inherit; }
+.scope-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0 4px; }
+.scope-pick label { display: grid; gap: 2px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; cursor: pointer; }
+.scope-pick label.on { border-color: #2929BF; box-shadow: 0 0 0 1px #2929BF inset; }
+.scope-pick input { position: absolute; opacity: 0; pointer-events: none; }
+.scope-pick small { color: var(--muted); font-size: 12px; }
 .schedule-pick { display: grid; gap: 6px; margin: 12px 0 4px; }
 .schedule-pick label { font-weight: 600; font-size: 14px; }
 .schedule-pick input { font: inherit; padding: 9px 12px; border: 1px solid var(--line); border-radius: 10px; min-height: 42px; }
@@ -581,6 +586,7 @@ button.tool-dark.on { background: #1d1d1f; border-color: #1d1d1f; box-shadow: in
 .swatch.on { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--ink); }
 .swatch.none { background: linear-gradient(135deg, #fff 45%, #e9485a 46%, #e9485a 54%, #fff 55%); }
 .swatch.tool { display: grid; place-items: center; background: var(--surface); color: var(--ink); }
+.swatch.tool svg { display: block; flex: none; }
 .hsb { display: grid; gap: 6px; font-size: 13px; color: var(--muted); }
 .hsb input[type='range'] {
   -webkit-appearance: none; appearance: none; width: 100%; height: 14px; border-radius: 7px; margin: 6px 0;
