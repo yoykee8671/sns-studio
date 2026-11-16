@@ -10,13 +10,17 @@ export async function POST(req) {
     return Response.json({ error: '비밀번호가 달라요.' }, { status: 401 });
   }
   const token = createHash('sha256').update(password).digest('hex');
+  // Secure on HTTPS (sns.gnuol.com via the tunnel); plain http is the direct Tailscale
+  // address (http://macmini:3110), already encrypted by Tailscale, where a Secure cookie
+  // would never be kept.
+  const https = req.headers.get('x-forwarded-proto') === 'https' || new URL(req.url).protocol === 'https:';
   return Response.json(
     { ok: true },
     {
       headers: {
         'Set-Cookie':
           `studio-auth=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000` +
-          (process.env.NODE_ENV === 'production' ? '; Secure' : ''),
+          (https ? '; Secure' : ''),
       },
     },
   );
